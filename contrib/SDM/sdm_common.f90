@@ -342,6 +342,12 @@ module m_sdm_common
   real(RP), parameter :: sgm2_amsul_dycoms =  1.70e0_RP
   real(RP), parameter :: rmax_amsul_dycoms =  1.0e-06_RP   !! [m]
   real(RP), parameter :: rmin_amsul_dycoms =  5.0e-09_RP
+  ! parameter for the log-normal distribution under ACE-ENA-observation
+  real(RP), parameter :: n3_nacl_ace    = 100.E+6_RP   !! [1/m3]
+  real(RP), parameter :: rb3_nacl_ace   = 1.0E-06_RP   !! [m]
+  real(RP), parameter :: sgm3_nacl_ace  = 1.2_RP       !! [-]
+  real(RP), parameter :: rmax_nacl_ace  = 5.0E-06_RP   !! [m]
+  real(RP), parameter :: rmin_nacl_ace  = 1.0E-07_RP
 
   real(RP), parameter :: Es_T_A = 2.53E+11_RP  ! A[kg/m s2] : Es = A * exp(-B/T)
   real(RP), parameter :: Es_T_B = 5.42E+3_RP   ! B[K] : Es = A * exp(-B/T)

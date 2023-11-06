@@ -63,14 +63,14 @@ module mod_user
   real(RP), private, save :: USER_LSsink_D = 0.0_RP         ! large scale sinking parameter [1/s]
   real(RP), private, save :: USER_LSsink_bottom = 0.0_RP    ! large scale sinking parameter [m]
   ! flag
-  integer,  private, save :: USER_LS_FLG = 0 !-- 0->no force, 1->dycoms, 2->rico
+  integer,  private, save :: USER_LS_FLG = 0 !-- 0->no force, 1->dycoms, 2->rico, 3->ACE-ENA
 
   real(RP), private, allocatable :: Q_rate(:,:,:,:)
   real(RP), private, save :: corioli
 
   real(RP), private, save :: F0    = 70.00_RP  ! Upward [J/m2/s]
   real(RP), private, save :: F1    = 22.00_RP  ! [K/m**-1/3]
-  real(RP), private, save :: Dval  = 3.75E-6_RP ! divergence of large scale horizontal winds [1/s]
+  real(RP), private, save :: Dval  = 6.233E-6_RP ! divergence of large scale horizontal winds [1/s]
   real(RP), private, parameter :: kappa = 85.00_RP  ! scaling factor for LWP [m2/kg]
   real(RP), private, parameter :: a     =  1.00_RP  ! [K/m**-1/3]
   logical, private :: first = .true.
@@ -242,6 +242,48 @@ contains
           U_GEOS(k) = -9.9_RP + 2.0E-3_RP * CZ(k)
        enddo
        corioli = 4.5E-5_RP
+
+        elseif( USER_LS_FLG == 3 ) then ! ACE-ENA
+
+           do k = KS, KE
+              if ( CZ(k) < 0.0_RP ) then
+                 MOMZ_LS(k,1) = 0.0_RP
+                 MOMZ_LS_DZ(k,1) = 0.0_RP
+              else if ( CZ(k) < USER_LSsink_bottom ) then
+                 zovzb = CZ(k) / USER_LSsink_bottom
+                 MOMZ_LS(k,1) = - 0.5_RP * USER_LSsink_D * USER_LSsink_bottom &
+                      * ( zovzb - sin(PI*zovzb)/PI )
+                 MOMZ_LS_DZ(k,1) = - 0.5_RP * USER_LSsink_d &
+                      * ( 1.0_RP - cos(PI*zovzb) )
+              else
+                 MOMZ_LS(k,1) = - USER_LSsink_D * ( CZ(k) - USER_LSsink_bottom * 0.5_RP )
+                 MOMZ_LS_DZ(k,1) = - USER_LSsink_D
+              end if
+           enddo
+           do k = KS-1, KE
+              if ( FZ(k) < 0.0_RP ) then
+                 MOMZ_LS(k,2) = 0.0_RP
+                 MOMZ_LS_DZ(k,2) = 0.0_RP
+              else if ( FZ(k) < USER_LSsink_bottom ) then
+                 zovzb = FZ(k) / USER_LSsink_bottom
+                 MOMZ_LS(k,2) = - 0.5_RP * USER_LSsink_D * USER_LSsink_bottom &
+                      * ( zovzb - sin(PI*zovzb)/PI )
+                 MOMZ_LS_DZ(k,2) = - 0.5_RP * USER_LSsink_D &
+                      * ( 1.0_RP - cos(PI*zovzb) )
+              else
+                 MOMZ_LS(k,2) = - USER_LSsink_D * ( FZ(k) - USER_LSsink_bottom * 0.5_RP )
+                 MOMZ_LS_DZ(k,2) = - USER_LSsink_D
+              end if
+           enddo
+           MOMZ_LS_FLG( : ) = .true.
+           QV_LS(:,:) = 0.0_RP
+           Q_rate( :,:,:,: ) = 0.0_RP
+
+           do k = KS-1, KE
+              U_GEOS(k) = -2.07_RP
+              V_GEOS(k) = -1.03_RP
+           enddo
+           corioli = 7.6E-5_RP
 
     endif
 
@@ -528,7 +570,7 @@ contains
 
     if( do_phy_rd ) then
 
-      if( IO_L ) write(IO_FID_LOG,*) '*** Physics step: Parametarized Radiation (DYCOMS-II)'
+      if( IO_L ) write(IO_FID_LOG,*) '*** Physics step: Parametarized Radiation'
 
       flux_rad    (:,:,:) = 0.0_RP
 
@@ -586,7 +628,8 @@ contains
 
           flux_rad(k,i,j) = F0 * exp( -Qabove ) + F1 * exp( -Qbelow )
         enddo
-
+        
+        if( USER_LS_FLG == 1 .or. USER_LS_FLG == 2 ) then
         do k = k_cldtop, KE
            dZ      = FZ(k)-CZ(k_cldtop)
            dZ_CBRT = dZ**(1.0_RP/3.0_RP)
@@ -606,6 +649,7 @@ contains
                            + a * DENS(k_cldtop,i,j)*( 1.0_RP-QTOT ) * CPdry * Dval &
                            * ( 0.250_RP * dZ * dZ_CBRT + CZ(k_cldtop) * dZ_CBRT )
         enddo
+        endif
 
         do k = KS, KE
           TEMP_t(k,i,j) = - ( flux_rad(k,i,j) - flux_rad(k-1,i,j) ) / CPdry * RCDZ(k)

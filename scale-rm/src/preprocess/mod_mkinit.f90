@@ -27,6 +27,7 @@
 !! @li      2015-04-30 (Y.Sato)     [mod] add WARMBUBBLE-AERO
 !! @li      2018-02-12 (S.Shima)    [add] SONDE_PERTURB
 !! @li      2019-08-14 (S.Shima)    [add] Set QC=0 when using SDM for DYCOMSII(RF02) case
+!! @li      2023-11-06 (C.Yin)      [mod] add ACE_ENA
 !!
 !<
 !-------------------------------------------------------------------------------
@@ -155,6 +156,8 @@ module mod_mkinit
   integer, public, parameter :: I_BAROCWAVE        = 30
   integer, public, parameter :: I_BOMEX            = 31
 
+  integer, public, parameter :: I_ACE_ENA          = 32
+
   integer, public, parameter :: I_SONDE_PERTURB    = 1001
 
   !-----------------------------------------------------------------------------
@@ -201,6 +204,9 @@ module mod_mkinit
 
   private :: MKINIT_boxaero
   private :: MKINIT_warmbubbleaero
+  
+  private :: MKINIT_ACE_ENA
+
 
   !-----------------------------------------------------------------------------
   !
@@ -365,6 +371,8 @@ contains
        MKINIT_TYPE = I_BAROCWAVE
     case('SONDE_PERTURB')
        MKINIT_TYPE = I_SONDE_PERTURB
+    case('ACE_ENA')
+       MKINIT_TYPE = I_ACE_ENA
        call BUBBLE_setup
     case default
        write(*,*) 'xxx Unsupported TYPE:', trim(MKINIT_initname)
@@ -524,6 +532,8 @@ contains
          call MKINIT_barocwave
       case(I_SONDE_PERTURB)
          call MKINIT_sonde_perturb
+      case('ACE_ENA')
+         call MKINIT_ACE_ENA
       case default
          write(*,*) 'xxx Unsupported TYPE:', MKINIT_TYPE
          call PRC_MPIstop
@@ -5627,5 +5637,258 @@ contains
 
     return
   end subroutine MKINIT_real
+
+!-----------------------------------------------------------------------------
+!> Make initial state for stratocumulus
+subroutine MKINIT_ACE_ENA
+  use scale_atmos_hydrometeor, only: &
+     I_QV, &
+     I_QC, &
+     I_NC, &
+     QHE
+  use scale_atmos_phy_mp_suzuki10, only: &
+       nccn
+  use mod_atmos_admin, only: &
+       ATMOS_PHY_MP_TYPE, &
+       ATMOS_PHY_AE_TYPE
+  implicit none
+
+#ifndef DRY
+  real(RP) :: PERTURB_AMP  = 0.0_RP
+  integer  :: RANDOM_LIMIT = 5
+  integer  :: RANDOM_FLAG  = 0 ! 0 -> no perturbation
+                               ! 1 -> perturbation for PT
+                               ! 2 -> perturbation for u,v,w
+
+  NAMELIST / PARAM_MKINIT_ACE_ENA / &
+     PERTURB_AMP,     &
+     RANDOM_LIMIT,    &
+     RANDOM_FLAG
+
+  real(RP) :: potl(KA,IA,JA) ! liquid potential temperature
+  real(RP) :: LHV (KA,IA,JA) ! latent heat of vaporization [J/kg]
+
+  real(RP) :: qall ! QV+QC
+  real(RP) :: fact
+  real(RP) :: pi2
+  real(RP) :: sint
+
+  integer :: ierr
+  integer :: k, i, j, iq
+  !---------------------------------------------------------------------------
+
+  pi2 = atan(1.0_RP) * 2.0_RP  ! pi/2
+  if( IO_L ) write(IO_FID_LOG,*)
+  if( IO_L ) write(IO_FID_LOG,*) '++++++ Module[mkinit ACE-ENA] / Categ[preprocess] / Origin[SCALE-RM]'
+
+  if ( I_QV < 1 ) then
+     write(*,*) 'xxx QV is not registered'
+     call PRC_MPIstop
+  end if
+
+  rewind(IO_FID_CONF)
+  read(IO_FID_CONF,nml=PARAM_MKINIT_ACE_ENA,iostat=ierr)
+  if( ierr < 0 ) then !--- missing
+     if( IO_L ) write(IO_FID_LOG,*) '*** Not found namelist. Default used.'
+  elseif( ierr > 0 ) then !--- fatal error
+     write(*,*) 'xxx Not appropriate names in namelist PARAM_MKINIT_ACE_ENA. Check!'
+     call PRC_MPIstop
+  endif
+  if( IO_NML ) write(IO_FID_NML,nml=PARAM_MKINIT_ACE_ENA)
+
+  ! calc in dry condition
+  call RANDOM_get(rndm) ! make random
+  do j = JS, JE
+  do i = IS, IE
+
+     pres_sfc(1,i,j) = 1017.8E2_RP   ! [Pa]
+     pott_sfc(1,i,j) = 289.96_RP      ! [K]
+     qv_sfc(1,i,j) = 0.0_RP
+     qc_sfc(1,i,j) = 0.0_RP
+
+     do k = KS, KE
+        velx(k,i,j) = -2.07_RP
+        vely(k,i,j) = -1.03_RP
+
+        if ( GRID_CZ(k) < 880.0_RP ) then ! below 880 m
+           potl(k,i,j) = 289.96_RP ! [K]
+        else
+           potl(k,i,j) = 290.21_RP + 10.0_RP * ( GRID_CZ(k) * 1E-3_RP - 0.88_RP )**(0.385_RP)
+        endif
+
+        qv(k,i,j) = 0.0_RP
+        qc(k,i,j) = 0.0_RP
+     enddo
+  enddo
+  enddo
+
+  ! make density & pressure profile in dry condition
+  call HYDROSTATIC_buildrho( DENS    (:,:,:), & ! [OUT]
+                             temp    (:,:,:), & ! [OUT]
+                             pres    (:,:,:), & ! [OUT]
+                             potl    (:,:,:), & ! [IN]
+                             qv      (:,:,:), & ! [IN]
+                             qc      (:,:,:), & ! [IN]
+                             temp_sfc(:,:,:), & ! [OUT]
+                             pres_sfc(:,:,:), & ! [IN]
+                             pott_sfc(:,:,:), & ! [IN]
+                             qv_sfc  (:,:,:), & ! [IN]
+                             qc_sfc  (:,:,:)  ) ! [IN]
+
+  ! calc in moist condition
+  do j = JS, JE
+  do i = IS, IE
+     qv_sfc  (1,i,j) = 9.71E-3_RP
+     qc_sfc  (1,i,j) = 0.0_RP
+
+     do k = KS, KE
+        if ( GRID_CZ(k) < 880.0_RP ) then ! below 880 m
+           qall = 9.71E-3_RP ! [kg/kg]
+        else
+           qall = 7.34E-3_RP ! [kg/kg]
+        endif
+
+
+#ifdef SDM
+        qc(k,i,j) = 0.0_RP
+#endif
+        qv(k,i,j) = qall - qc(k,i,j)
+     enddo
+
+  enddo
+  enddo
+
+  call HYDROMETEOR_LHV( LHV(:,:,:), temp(:,:,:) )
+
+  do j = JS, JE
+  do i = IS, IE
+  do k = KS, KE
+     temp(k,i,j) = temp(k,i,j) + LHV(k,i,j) / CPdry * qc(k,i,j)
+  enddo
+  enddo
+  enddo
+
+  ! make density & pressure profile in moist condition
+  call HYDROSTATIC_buildrho_bytemp( DENS    (:,:,:), & ! [OUT]
+                                    pott    (:,:,:), & ! [OUT]
+                                    pres    (:,:,:), & ! [OUT]
+                                    temp    (:,:,:), & ! [IN]
+                                    qv      (:,:,:), & ! [IN]
+                                    qc      (:,:,:), & ! [IN]
+                                    pott_sfc(:,:,:), & ! [OUT]
+                                    pres_sfc(:,:,:), & ! [IN]
+                                    temp_sfc(:,:,:), & ! [IN]
+                                    qv_sfc  (:,:,:), & ! [IN]
+                                    qc_sfc  (:,:,:)  ) ! [IN]
+
+  do j  = JS, JE
+  do i  = IS, IE
+     DENS(   1:KS-1,i,j) = DENS(KS,i,j)
+     DENS(KE+1:KA,  i,j) = DENS(KE,i,j)
+  enddo
+  enddo
+
+  call COMM_vars8( DENS(:,:,:), 1 )
+  call COMM_wait ( DENS(:,:,:), 1 )
+
+  call RANDOM_get(rndm) ! make random
+  do j = JS, JE
+  do i = IS, IE
+  do k = KS, KE
+   if( RANDOM_FLAG == 2 .and. k <= RANDOM_LIMIT ) then
+     MOMZ(k,i,j) = ( 0.0_RP + 2.0_RP * ( rndm(k,i,j)-0.50_RP ) * PERTURB_AMP ) &
+                 * 0.5_RP * ( DENS(k+1,i,j) + DENS(k,i,j) )
+   else
+     MOMZ(k,i,j) = 0.0_RP
+   endif
+  enddo
+  enddo
+  enddo
+
+  call RANDOM_get(rndm) ! make random
+  do j = JS, JE
+  do i = IS, IE
+  do k = KS, KE
+   if( RANDOM_FLAG == 2 .and. k <= RANDOM_LIMIT ) then
+     MOMX(k,i,j) = ( velx(k,i,j) + 2.0_RP * ( rndm(k,i,j)-0.50_RP ) * PERTURB_AMP ) &
+                 * 0.5_RP * ( DENS(k,i+1,j) + DENS(k,i,j) )
+   else
+     MOMX(k,i,j) = ( velx(k,i,j) ) * 0.5_RP * ( DENS(k,i+1,j) + DENS(k,i,j) )
+   endif
+  enddo
+  enddo
+  enddo
+
+  call RANDOM_get(rndm) ! make random
+  do j = JS, JE
+  do i = IS, IE
+  do k = KS, KE
+   if( RANDOM_FLAG == 2 .and. k <= RANDOM_LIMIT ) then
+     MOMY(k,i,j) = ( vely(k,i,j) + 2.0_RP * ( rndm(k,i,j)-0.50_RP ) * PERTURB_AMP ) &
+                 * 0.5_RP * ( DENS(k,i,j+1) + DENS(k,i,j) )
+   else
+     MOMY(k,i,j) = vely(k,i,j) * 0.5_RP * ( DENS(k,i,j+1) + DENS(k,i,j) )
+   endif
+  enddo
+  enddo
+  enddo
+
+  call RANDOM_get(rndm) ! make random
+  do j = JS, JE
+  do i = IS, IE
+  do k = KS, KE
+   if( RANDOM_FLAG == 1 .and. k <= RANDOM_LIMIT ) then
+     RHOT(k,i,j) = ( pott(k,i,j) + 2.0_RP * ( rndm(k,i,j)-0.50_RP ) * PERTURB_AMP ) &
+                 * DENS(k,i,j)
+   else
+     RHOT(k,i,j) = pott(k,i,j) * DENS(k,i,j)
+   endif
+  enddo
+  enddo
+  enddo
+
+  if ( ATMOS_PHY_MP_TYPE == 'SUZUKI10' ) then
+     do j = JS, JE
+     do i = IS, IE
+     do k = KS, KE
+        !--- Super saturated air at initial
+        QTRC(k,i,j,I_QV) = qv(k,i,j) + qc(k,i,j)
+        do iq = QHE+1, QHE+nccn
+          QTRC(k,i,j,iq) = QTRC(k,i,j,iq) / DENS(k,i,j)
+        enddo
+     enddo
+     enddo
+     enddo
+  else
+     do j = JS, JE
+     do i = IS, IE
+     do k = KS, KE
+        QTRC(k,i,j,I_QV) = qv(k,i,j)
+        QTRC(k,i,j,I_QC) = qc(k,i,j)
+     enddo
+     enddo
+     enddo
+
+     if ( I_NC > 0 ) then
+        do j = JS, JE
+        do i = IS, IE
+        do k = KS, KE
+           if ( qc(k,i,j) > 0.0_RP ) then
+              QTRC(k,i,j,I_NC) = 55.0E6_RP / DENS(k,i,j) ! [number/m3] / [kg/m3]
+           endif
+        enddo
+        enddo
+        enddo
+     endif
+  endif
+
+#endif
+  if ( ATMOS_PHY_AE_TYPE == 'KAJINO13' ) then
+    call AEROSOL_setup
+  endif
+  return
+end subroutine MKINIT_ACE_ENA
+
+!-----------------------------------------------------------------------------
 
 end module mod_mkinit

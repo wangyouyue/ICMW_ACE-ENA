@@ -1504,9 +1504,9 @@ contains
 
       if( mod(sdm_aslset,10)==2 .or. abs(mod(sdm_aslset,10))==3 ) then
 
-         !! Derksen(2009)
+         !! ACE-ENA
          if( IO_L ) then
-          write(IO_FID_LOG,*) "number concentration of NaCl aerosol : Derksen"
+          write(IO_FID_LOG,*) "number concentration of NaCl aerosol : ACE-ENA"
          endif
          if( mod(sdm_aslset,10)==2 ) then
             n1_amsul   = 1.E-10_RP     !! temporary initialize
@@ -1518,11 +1518,11 @@ contains
             rmax_amsul = 1.E-10_RP
             rmin_amsul = 1.E-10_RP
          end if
-         n3_nacl   = n3_nacl_derksn
-         rb3_nacl  = rb3_nacl_derksn
-         sgm3_nacl = sgm3_nacl_derksn
-         rmax_nacl = rmax_nacl_derksn
-         rmin_nacl = rmin_nacl_derksn
+         n3_nacl   = n3_nacl_ace
+         rb3_nacl  = rb3_nacl_ace
+         sgm3_nacl = sgm3_nacl_ace
+         rmax_nacl = rmax_nacl_ace
+         rmin_nacl = rmin_nacl_ace
 
       end if
 

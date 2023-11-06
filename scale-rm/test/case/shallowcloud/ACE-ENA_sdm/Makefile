@@ -30,4 +30,4 @@ ORG_SRCS = mod_user.f90
 # build, makedir, run, jobshell, allclean, clean is inside of common Makefile
 include $(TESTDIR)/Makefile.common
 
-export SCALE_DYCOMS2_RF02_SDM=T
+export SCALE_ENABLE_SDM = T
