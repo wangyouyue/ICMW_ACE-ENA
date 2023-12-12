@@ -532,7 +532,7 @@ contains
          call MKINIT_barocwave
       case(I_SONDE_PERTURB)
          call MKINIT_sonde_perturb
-      case('ACE_ENA')
+      case(I_ACE_ENA)
          call MKINIT_ACE_ENA
       case default
          write(*,*) 'xxx Unsupported TYPE:', MKINIT_TYPE
