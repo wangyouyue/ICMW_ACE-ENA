@@ -5701,8 +5701,8 @@ subroutine MKINIT_ACE_ENA
   do j = JS, JE
   do i = IS, IE
 
-     pres_sfc(1,i,j) = 1017.8E2_RP   ! [Pa]
-     pott_sfc(1,i,j) = 289.96_RP      ! [K]
+     pres_sfc(1,i,j) = 1028.6E2_RP   ! [Pa]
+     pott_sfc(1,i,j) = 291.41_RP      ! [K]  rho = 1.22 kg/m^3
      qv_sfc(1,i,j) = 0.0_RP
      qc_sfc(1,i,j) = 0.0_RP
 
