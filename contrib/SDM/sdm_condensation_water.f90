@@ -37,9 +37,9 @@ module m_sdm_condensation_water
 contains
   subroutine sdm_condevp(sdm_aslset,                     &
        sdm_aslmw,sdm_aslion,sdm_dtevl, &
-       pres_scale,t_scale,qv_scale, &
+       pres_scale,t_scale,qv_scale,DENS, &
        sd_num,sd_numasl,sd_liqice,sd_x,sd_y,     &
-       sd_r,sd_asl,sd_ri,sd_rj,sd_rk              )
+       sd_r,sd_asl,sd_ri,sd_rj,sd_rk,sd_n,Nact,Ndeact    )
     
     use scale_const, only: &
          cp   => CONST_CPdry, &
@@ -61,6 +61,8 @@ contains
          mass_amsul, ion_amsul, mass_nacl, ion_nacl, &
          VALID2INVALID, &
          RLRv_D, LatGas, L_RL_K, CurveF, ASL_FF, STAT_LIQ, i2
+    use scale_grid, only: &
+         DX,DY,DZ
     ! Input variables
     integer,  intent(in) :: sdm_aslset
     real(RP), intent(in) :: sdm_aslmw(20)
@@ -69,6 +71,7 @@ contains
     real(RP), intent(in) :: pres_scale(KA,IA,JA) ! Pressure
     real(RP), intent(in) :: t_scale(KA,IA,JA) ! Temperature
     real(RP), intent(in) :: qv_scale(KA,IA,JA)   ! Water vapor mixing ratio
+    real(RP), intent(in) :: DENS(KA,IA,JA) ! Density     [kg/m3]
     integer,  intent(in) :: sd_num      ! number of super-droplets
     integer,  intent(in) :: sd_numasl   ! number of kind of chemical material contained as water-soluble aerosol in super droplets
     integer(i2), intent(in) :: sd_liqice(1:sd_num)
@@ -78,11 +81,15 @@ contains
     real(RP), intent(in) :: sd_x(1:sd_num) ! x-coordinate of super-droplets
     real(RP), intent(in) :: sd_y(1:sd_num) ! y-coordinate of super-droplets
     real(RP), intent(in) :: sd_asl(1:sd_num,1:sd_numasl) ! aerosol mass of super-droplets
+    integer(DP), intent(in) :: sd_n(1:sd_num)    ! multiplicity of super-droplets
     real(RP), intent(inout) :: sd_ri(1:sd_num)   ! index[i/real] of super-droplets
     real(RP), intent(inout) :: sd_rj(1:sd_num)   ! index[j/real] of super-droplets
     real(RP), intent(in) :: sd_rk(1:sd_num)   ! index[k/real] of super-droplets
     ! Input and output variables
     real(RP), intent(inout) :: sd_r(1:sd_num) ! equivalent radius of super-droplets
+    ! Output variables
+    real(RP), intent(out) :: Nact(KA,IA,JA) ! aerosol activation rate
+    real(RP), intent(out) :: Ndeact(KA,IA,JA) ! aerosol deactivation rate
 
     ! Internal shared variables
     real(RP):: sd_aslmw(1:22) ! Molecular mass of chemical material contained as water-soluble aerosol in super droplets (default+20)
@@ -200,6 +207,9 @@ contains
 
     end do
 
+    ! Initialize activation/deactivation rate
+    Nact(:,:,:) = 0.0_RP
+    Ndeact(:,:,:) = 0.0_RP
 
     ! Condensation of water
 !OCL INDEPENDENT
@@ -321,9 +331,18 @@ contains
 
        end do
 
+       ! calculate aerosol activation/deactivation rate
+       if( (rdi >= Rc) .and. (crd < Rc) ) then
+          Nact(k,j,i) = Nact(k,j,i) + sd_n(n) / DENS((k,j,i)
+       elseif( (rdi < Rc) .and. (crd >= Rc) ) then
+          Ndeact(k,j,i) = Ndeact(k,j,i) + sd_n(n) / DENS((k,j,i)
+       end if
+
        sd_r(n) = rdi   !! particle radius at future
 
     end do
+    Nact   = Nact/(sdm_dtevl*DX*DY*DZ*1.E+6_RP)    !! num*m3/kg => num/mg*s
+    Ndeact = Ndeact/(sdm_dtevl*DX*DY*DZ*1.E+6_RP)    !! num*m3/kg => num/mg*s
 
 #ifdef _FAPP_
     ! Section specification for fapp profiler

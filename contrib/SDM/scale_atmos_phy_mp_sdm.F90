@@ -137,7 +137,8 @@ module scale_atmos_phy_mp_sdm
      PRC_IsMaster,          &
      PRC_MPIstop
   use scale_time, only:     &
-     TIME_NOWSEC
+     TIME_NOWSEC,           &
+     TIME_DTSEC
 
   use scale_atmos_hydrometeor, only: &
     N_HYD, &
@@ -1067,8 +1068,8 @@ contains
                    sdm_itmp1,sdm_itmp2,           &
                    sd_itmp1,sd_itmp2,sd_itmp3,sd_dtmp1,sd_dtmp2,sd_dtmp3,sd_dtmp4,     &
                    crs_dtmp1,crs_dtmp2,crs_dtmp3,crs_dtmp4,       &
-                   crs_dtmp5,crs_dtmp6,                           &
-                   rbuf_r8,sbuf_r8,rbuf_i8,sbuf_i8,rbuf_i2,sbuf_i2,rbuf_i4,sbuf_i4) 
+                   crs_dtmp5,crs_dtmp6,Nact_avg,Ndeact_avg,       &
+                   rbuf_r8,sbuf_r8,rbuf_i8,sbuf_i8,rbuf_i2,sbuf_i2,rbuf_i4,sbuf_i4)
 
      !== convert updated contravariant velocity of ==!
      !== super-droplets to {u,v,w} at future       ==!
@@ -1204,6 +1205,13 @@ contains
     end if
     call HIST_in( prr_crs(:,:,6),       'PREC_ACC_sd',    'surface precipitation accumulation',    'm')
     call HIST_in( QHYD_sdm(:,:,:),      'QHYD_sd', 'mixing ratio of liquid water and ice in SDM', 'kg/kg')
+
+    ! Check whether the item has been already registered
+    call HIST_reg( histitemid, 'Nact', 'aerosol activation rate', 'num/mg*s', 3)
+    call HIST_in( Nact_avg(:,:,:), 'Nact', 'aerosol activation rate', 'num/mg*s')
+    ! Check whether the item has been already registered
+    call HIST_reg( histitemid, 'Ndeact', 'aerosol deactivation rate', 'num/mg*s', 3)
+    call HIST_in( Ndeact_avg(:,:,:), 'Ndeact', 'aerosol deactivation rate', 'num/mg*s')
 
     !!!!!!!!!!!!!!!!!!!!!
     !!!! History output of SNC (SD number density). 
@@ -1861,9 +1869,9 @@ contains
 
          call sdm_condevp(sdm_aslset,                                   &
                           sdm_aslmw,sdm_aslion,sdm_dtevl,               &
-                          pres_scale,t_scale,QTRC(:,:,:,I_QV),          &
+                          pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS,     &
                           sdnum_s2c,sdnumasl_s2c,sdliqice_s2c,sdx_s2c,sdy_s2c,       &
-                          sdr_s2c,sdasl_s2c,sdri_s2c,sdrj_s2c,sdrk_s2c)
+                          sdr_s2c,sdasl_s2c,sdri_s2c,sdrj_s2c,sdrk_s2c,sdn_s2c,Nact_avg,Ndeact_avg)
 
       end if
 
@@ -1939,8 +1947,8 @@ contains
                       sdm_itmp1,sdm_itmp2,        &
                       sd_itmp1,sd_itmp2,sd_itmp3,sd_dtmp1,sd_dtmp2,sd_dtmp3,sd_dtmp4,   &
                       crs_val1p,crs_val1c,crs_val2p,crs_val2c,    &
-                      crs_val3p,crs_val3c,                        &
-                      rbuf_r8,sbuf_r8,rbuf_i8,sbuf_i8,rbuf_i2,sbuf_i2,rbuf_i4,sbuf_i4) 
+                      crs_val3p,crs_val3c,Nact_avg,Ndeact_avg,            &
+                      rbuf_r8,sbuf_r8,rbuf_i8,sbuf_i8,rbuf_i2,sbuf_i2,rbuf_i4,sbuf_i4)
    use scale_process, only: &
        PRC_MPIstop
    use scale_time, only: &
@@ -2086,6 +2094,8 @@ contains
    real(RP), intent(out) :: crs_val2c(KA,IA,JA) ! temporary buffer of CReSS dimension
    real(RP), intent(out) :: crs_val3p(KA,IA,JA) ! temporary buffer of CReSS dimension
    real(RP), intent(out) :: crs_val3c(KA,IA,JA) ! temporary buffer of CReSS dimension
+   real(RP), intent(out) :: Nact_avg(KA,IA,JA) ! average of aerosol activation rate
+   real(RP), intent(out) :: Ndeact_avg(KA,IA,JA) ! average of aerosol deactivation rate
    ! Internal shared variables
    integer :: istep_sdm        ! step number of SDM
    integer :: istep_evl        ! step number of {condensation/evaporation} process
@@ -2107,6 +2117,10 @@ contains
    real(RP) :: sdm_dtmlt  ! time step of {melt/freeze of super-droplets} process
    real(RP) :: sdm_dtsbl  ! time step of {sublimation/deposition of super-droplets} process
    real(RP) :: tmp_mink
+   real(RP) :: Nact(KA,IA,JA) ! aerosol activation rate
+   real(RP) :: Ndeact(KA,IA,JA) ! aerosol deactivation rate
+   real(RP) :: Nact_temp(KA,IA,JA) ! aerosol activation rate
+   real(RP) :: Ndeact_temp(KA,IA,JA) ! aerosol deactivation rate
   !---------------------------------------------------------------------
 
       ! Initialize and rename variables
@@ -2120,10 +2134,13 @@ contains
       istep_evl = nclstp(1)                !! condensation/evaporation
       istep_col = nclstp(2)                !! stochastic coalescence
       istep_adv = nclstp(3)                !! motion of super-droplets
-      istep_mlt = nclstp(4)                !! motion of super-droplets
-      istep_sbl = nclstp(5)                !! motion of super-droplets
+      istep_mlt = nclstp(4)                !! melting/freezing of super-droplets
+      istep_sbl = nclstp(5)                !! sublimation/depsition of super-droplets
 
       lsdmup = .false.
+
+      Nact_temp = 0.0_RP
+      Ndeact_temp = 0.0_RP
 
       ! Calculate super-droplets process.
       !   1 : motion of super-droplets (advection, terminal velocity)
@@ -2325,9 +2342,17 @@ contains
             !! update the equivalent radius of SDs
             call sdm_condevp(sdm_aslset,            &
                              sdm_aslmw,sdm_aslion,sdm_dtevl,      &
-                             pres_scale,t_scale,QTRC(:,:,:,I_QV), &
+                             pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS, &
                              sd_num,sd_numasl,sd_liqice,sd_x,sd_y,sd_r,sd_asl,&
-                             sd_ri,sd_rj,sd_rk)
+                             sd_ri,sd_rj,sd_rk,sd_n,Nact,Ndeact)
+            Nact_temp = Nact_temp + Nact
+            Ndeact_temp = Ndeact_temp + Ndeact
+            if(mod(t,int(TIME_DTSEC/sdm_dtevl))==0) then
+                Nact_avg = Nact_temp/int(TIME_DTSEC/sdm_dtevl)
+                Ndeact_avg = Ndeact_temp/int(TIME_DTSEC/sdm_dtevl)
+                Nact_temp = 0.0_RP
+                Ndeact_temp = 0.0_RP
+            end if
 
             ! get density of liquid-water(qw) after process-1
             !! here cres_val1c is the rhow after condevp
@@ -2879,9 +2904,9 @@ contains
 
          call sdm_condevp(sdm_aslset,                              &
                           sdm_aslmw,sdm_aslion,sdm_dtevl,           &
-                          pres_scale,t_scale,QTRC(:,:,:,I_QV),      &
+                          pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS, &
                           sd_fmnum,sd_numasl,sd_fmliqice,sd_fmx,sd_fmy,sd_fmr,      &
-                          sd_fmasl,sd_fmri,sd_fmrj,sd_fmrk)
+                          sd_fmasl,sd_fmri,sd_fmrj,sd_fmrk,sd_fmn,Nact,Ndeact)
 
       end if
 

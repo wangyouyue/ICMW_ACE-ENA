@@ -280,10 +280,10 @@ contains
            Q_rate( :,:,:,: ) = 0.0_RP
 
            do k = KS-1, KE
-              U_GEOS(k) = -2.07_RP
-              V_GEOS(k) = -1.03_RP
+              U_GEOS(k) = 0.0_RP
+              V_GEOS(k) = 0.0_RP
            enddo
-           corioli = 7.6E-5_RP
+           corioli = 0.0_RP
 
     endif
 
