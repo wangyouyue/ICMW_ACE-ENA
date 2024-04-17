@@ -801,6 +801,8 @@ contains
     real(RP) :: crs_dtmp1(KA,IA,JA), crs_dtmp2(KA,IA,JA)
     real(RP) :: crs_dtmp3(KA,IA,JA), crs_dtmp4(KA,IA,JA)
     real(RP) :: crs_dtmp5(KA,IA,JA), crs_dtmp6(KA,IA,JA)
+    real(RP) :: Nact_avg(KA,IA,JA) ! average of aerosol activation rate
+    real(RP) :: Ndeact_avg(KA,IA,JA) ! average of aerosol deactivation rate
     integer  :: n, s, k, i, j, iq         ! index
 
     real(RP) :: pres_scale(KA,IA,JA) ! Pressure
@@ -869,7 +871,8 @@ contains
                       sdasl_s2c, sdx_s2c, sdy_s2c,        &
                       sdz_s2c, sdr_s2c,                   &
                       sdrk_s2c, sdvz_s2c,                 &
-                      sdrkl_s2c, sdrku_s2c                )
+                      sdrkl_s2c, sdrku_s2c,               &
+                      Nact_avg, Ndeact_avg)
          prr_crs(1:IA,1:JA,1:6)=0.0_RP
       end if
     endif
@@ -1359,7 +1362,8 @@ contains
                          sdasl_s2c, sdx_s2c, sdy_s2c,        &
                          sdz_s2c, sdr_s2c,                   &
                          sdrk_s2c, sdvz_s2c,                 &
-                         sdrkl_s2c, sdrku_s2c                )
+                         sdrkl_s2c, sdrku_s2c,               &
+                         Nact_avg, Ndeact_avg)
   !***********************************************************************
   ! Input variables
       use scale_const, only: &
@@ -1410,6 +1414,8 @@ contains
       real(RP),intent(inout) :: sdvz_s2c(1:sdnum_s2c)
       real(RP),intent(inout) :: sdrkl_s2c(IA,JA)
       real(RP),intent(inout) :: sdrku_s2c(IA,JA)
+      real(RP),intent(out) :: Nact_avg(KA,IA,JA) ! average of aerosol activation rate
+      real(RP),intent(out) :: Ndeact_avg(KA,IA,JA) ! average of aerosol deactivation rate
       ! Work variables
       real(RP) :: n0                            ! number of real droplets per unit volume and per aerosol radius
       real(RP) :: dry_r                         ! aerosol radius
@@ -2812,6 +2818,8 @@ contains
       integer :: innum         ! temporary
       integer :: id_invd       ! index
       integer :: k, n
+      real(RP) :: Nact(KA,IA,JA) ! aerosol activation rate
+      real(RP) :: Ndeact(KA,IA,JA) ! aerosol deactivation rate
 
       real(RP) :: pres_scale(KA,IA,JA)  ! Pressure
       real(RP) :: t_scale(KA,IA,JA)    ! Temperature

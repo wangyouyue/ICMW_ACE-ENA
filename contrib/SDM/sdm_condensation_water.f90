@@ -333,9 +333,9 @@ contains
 
        ! calculate aerosol activation/deactivation rate
        if( (rdi >= Rc) .and. (crd < Rc) ) then
-          Nact(k,j,i) = Nact(k,j,i) + sd_n(n) / DENS((k,j,i)
+          Nact(k,j,i) = Nact(k,j,i) + sd_n(n) / DENS(k,j,i)
        elseif( (rdi < Rc) .and. (crd >= Rc) ) then
-          Ndeact(k,j,i) = Ndeact(k,j,i) + sd_n(n) / DENS((k,j,i)
+          Ndeact(k,j,i) = Ndeact(k,j,i) + sd_n(n) / DENS(k,j,i)
        end if
 
        sd_r(n) = rdi   !! particle radius at future
