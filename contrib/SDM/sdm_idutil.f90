@@ -392,7 +392,53 @@ contains
              end if
           end if
        end do
+    else if (sdtype == 'aerosol') then
+       do n=1,sd_num
+          if( sd_rk(n)<VALID2INVALID ) cycle
 
+          if( sd_liqice(n) == STAT_LIQ ) then
+             !! calculate the coefficient a of Kohler curve
+             i = floor(sd_ri(n))+1
+             j = floor(sd_rj(n))+1
+             k = floor(sd_rk(n))+1
+
+             t_sd  = TEMP0(k,i,j)
+
+             ivt_sd = 1.0_RP / t_sd
+             coef_a  = CurveF * ivt_sd
+
+             !! calculate the coefficient b of Kohler curve
+             coef_b = 0.0_RP
+
+    !OCL UNROLL('full'),NOSWP
+             do t=1,22
+
+                s = idx_nasl(t)
+
+                dtmp = sd_asl(n,s) * (real(sd_aslion(s),kind=RP)            &
+                     / real(sd_aslmw(s),kind=RP))
+                coef_b = coef_b + dmask(t) * dtmp
+                
+             end do
+
+             coef_b = coef_b * ASL_FF
+
+             !! calculate critical radius
+             sd_thld_radi = sqrt(3.0_RP*coef_b/coef_a)
+
+             if( sd_r(n)<=sd_thld_radi ) then
+                cnt = cnt + 1
+                ilist(cnt) = n
+             end if
+
+          else if( sdm_cold .and. (sd_liqice(n) == STAT_ICE)) then
+             sd_thld_radi = 1.0e-6_RP ! threshold radius [m]
+             if( (sdi%re(n)<=sd_thld_radi) .or. (sdi%rp(n)<=sd_thld_radi) ) then
+                cnt = cnt + 1
+                ilist(cnt) = n
+             end if
+          end if
+       end do
     else
        ! stop if unsupported sdtype option is specified
        write(*,*) "sdm_copy_selected_sd: Unsupported sdtype option is specified"

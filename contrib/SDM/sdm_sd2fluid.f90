@@ -38,7 +38,7 @@ module m_sdm_sd2fluid
 
   implicit none
   private
-  public :: sdm_sd2prec, sdm_sd2rhow, sdm_sd2rhocr, sdm_sd2qcqr, sdm_sd2qiqsqg, sdm_sd2rhosol, sdm_sd2rhosd, sdm_sd2rhodropmom
+  public :: sdm_sd2prec, sdm_sd2rhow, sdm_sd2rhocr, sdm_sd2qcqr, sdm_sd2qiqsqg, sdm_sd2rhosol, sdm_sd2rhosd, sdm_sd2rhodropmom, sdm_sd2massmxratio
 
 contains
   subroutine sdm_sd2prec(dtb_crs,                        &
@@ -1601,5 +1601,153 @@ contains
 #endif
     return
   end subroutine sdm_sd2rhodropmom
+!---------------------------------------------------------------------------------------------------------------------------------
+subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
+     sd_x,sd_y,sd_r,sd_ri,sd_rj,sd_rk,sd_rkl,sd_rku,DENS,      &
+     ilist)
+  use scale_grid_index, only: &
+       IA,JA,KA,IS,IE,JS,JE,KS,KE
+  use m_sdm_common, only: &
+       dxiv_sdm, dyiv_sdm, VALID2INVALID, num_threads, STAT_LIQ, i2, ONE_PI, DWATR
+  use m_sdm_coordtrans, only: &
+       sdm_x2ri, sdm_y2rj
+  ! Input variables
+  integer,intent(in)  :: order_n               ! order of the droplet moment
+  real(RP),intent(in) :: zph_crs(KA,IA,JA)    ! z physical coordinate
+  integer, intent(in) :: sd_num               ! number of super-droplets
+  integer(DP), intent(in) :: sd_n(1:sd_num)   ! multiplicity of super-droplets
+  integer(i2), intent(in) :: sd_liqice(1:sd_num)
+                     ! status of super-droplets (liquid/ice)
+                     ! 01 = all liquid, 10 = all ice
+                     ! 11 = mixture of ice and liquid
+  real(RP), intent(in) :: sd_x(1:sd_num) ! x-coordinate of super-droplets
+  real(RP), intent(in) :: sd_y(1:sd_num) ! y-coordinate of super-droplets
+  real(RP), intent(in) :: sd_r(1:sd_num) ! equivalent radius of super-droplets
+  real(RP), intent(inout) :: sd_ri(1:sd_num)! index[i/real] of super-droplets
+  real(RP), intent(inout) :: sd_rj(1:sd_num)! index[j/real] of super-droplets
+  real(RP), intent(in) :: sd_rk(1:sd_num)! index[k/real] of super-droplets
+  real(RP), intent(in) :: sd_rkl(IA,JA) ! lower boundary index[k/real] at scalar point in SDM calculation area
+  real(RP), intent(in) :: sd_rku(IA,JA) ! upper boundary index[k/real] at scalar point in SDM calculation area
+  real(RP), intent(in) :: DENS(KA,IA,JA) ! Density     [kg/m3]
+  ! Output variables
+  real(RP), intent(out) :: mmxratio_sdm(KA,IA,JA) ! mass mixing ratio
+  integer, intent(out) :: ilist(1:sd_num)   ! buffer for list vectorization
+  ! Work variables
+  real(RP) :: dcoef(KA,IA,JA)    ! coef.
+  real(RP) :: drate        ! temporary
+  integer :: cnt                ! counter
+  integer :: i, j, k, kl, ku, m, n    ! index
+  integer :: tlist
+  integer :: i_threads
+  real(RP) :: tmp_sdm(num_threads,KA,IA,JA)
+  !--------------------------------------------------------------------
+
+#ifdef _FAPP_
+  ! Section specification for fapp profiler
+  call fapp_start("sdm_sd2rhodropmom",1,1)
+#endif
+  call sdm_x2ri(sd_num,sd_x,sd_ri,sd_rk)
+  call sdm_y2rj(sd_num,sd_y,sd_rj,sd_rk)
+
+  ! Initialize
+  do k = KS, KE
+  do i = IS, IE
+  do j = JS, JE
+     dcoef(k,i,j) = dxiv_sdm(i) * dyiv_sdm(j) &
+          / (zph_crs(k,i,j)-zph_crs(k-1,i,j))
+  enddo
+  enddo
+  enddo
+
+  do k=1,KA
+  do j=1,JA
+  do i=1,IA
+     mmxratio_sdm(k,i,j) = 0.0_RP
+  end do
+  end do
+  end do
+
+  ! Get index list for compressing buffer.
+  cnt =0
+  do n=1,sd_num
+     if( sd_rk(n)<VALID2INVALID ) cycle
+     if( sd_liqice(n)/=STAT_LIQ ) cycle
+
+     cnt = cnt + 1
+     ilist(cnt) = n
+  end do
+
+  tlist = cnt
+
+  ! Get mass mixing ratio
+  !### count the mass mixing ratio in each grid box ###!
+
+  if(tlist>0) then
+     tmp_sdm(:,:,:,:) = 0.0_RP
+
+     do i_threads=1,num_threads
+     do m=i_threads,tlist,num_threads
+        n = ilist(m)
+
+        i = floor(sd_ri(n))+1
+        j = floor(sd_rj(n))+1
+        k = floor(sd_rk(n))+1
+
+        tmp_sdm(i_threads,k,i,j) = tmp_sdm(i_threads,k,i,j)                        &
+             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3.0_RP * real(sd_n(n),kind=RP)/(DENS(k,j,i)*3.0_RP)
+
+     end do
+     end do
+
+     do k=1,KA
+     do j=1,JA
+     do i=1,IA
+     do i_threads=1,num_threads
+        mmxratio_sdm(k,i,j)=mmxratio_sdm(k,i,j)+tmp_sdm(i_threads,k,i,j)
+     end do
+     end do
+     end do
+     end do
+  
+     ! Adjust the mass mixing ratio at verical boundary.
+     do j=JS,JE
+     do i=IS,IE
+        !! at lower boundary
+        kl    = floor(sd_rkl(i,j))+1
+        drate = real(kl,kind=RP) - sd_rkl(i,j)
+        if( drate<0.50_RP ) then
+           mmxratio_sdm(kl,i,j) = 0.0_RP           !! <50% in share
+        else
+           mmxratio_sdm(kl,i,j) = mmxratio_sdm(kl,i,j)/drate
+        end if
+
+        !! at upper boundary
+        ku    = floor(sd_rku(i,j))+1
+        drate = sd_rku(i,j) - real(ku-1,kind=RP)
+        if( drate<0.50_RP ) then
+           mmxratio_sdm(ku,i,j) = 0.0_RP           !! <50% in share
+        else
+           mmxratio_sdm(ku,i,j) = mmxratio_sdm(ku,i,j)/drate
+        end if
+     end do
+     end do
+
+     ! Convert super-droplets to mass mixing ratio
+     do k=KS,KE
+     do j=JS,JE
+     do i=IS,IE
+        mmxratio_sdm(k,i,j) = mmxratio_sdm(k,i,j) * dcoef(k,i,j)
+     end do
+     end do
+     end do
+
+  end if
+
+#ifdef _FAPP_
+  ! Section specification for fapp profiler
+  call fapp_stop("sdm_sd2rhodropmom",1,1)
+#endif
+  return
+end subroutine sdm_sd2massmxratio
   !---------------------------------------------------------------------------------------------------------------------------------
 end module m_sdm_sd2fluid

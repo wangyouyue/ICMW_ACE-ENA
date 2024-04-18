@@ -818,6 +818,9 @@ contains
     real(RP) :: rhodropmom1(KA,IA,JA) ! density of the 1st droplet moment
     real(RP) :: rhodropmom2(KA,IA,JA) ! density of the 2nd droplet moment
     real(RP) :: rhodropmom3(KA,IA,JA) ! density of the 3rd droplet moment
+    real(RP) :: Na(KA,IA,JA) ! density of the 0th aerosol moment
+    real(RP) :: qna(KA,IA,JA) ! aerosol number mixing ratio
+    real(RP) :: qnc(KA,IA,JA) ! cloud droplet number mixing ratio
 
     real(RP), pointer :: sdx_tmp(:),sdy_tmp(:),sdrk_tmp(:),sdz_tmp(:),sdri_tmp(:),sdrj_tmp(:),sdr_tmp(:),sdvz_tmp(:)
     real(RP), pointer :: sdasl_tmp(:,:)
@@ -826,7 +829,7 @@ contains
     type(sdicedef), pointer :: sdice_tmp
     integer :: sdnum_tmp, sdnumasl_tmp
     integer :: histitemid
-    logical :: do_puthist, do_puthist_0, do_puthist_1, do_puthist_2, do_puthist_3
+    logical :: do_puthist, do_puthist_0, do_puthist_1, do_puthist_2, do_puthist_3, do_puthist_4
     integer :: order_n
 
     !-------------------------------------------------------------------------------------------------------------------------------
@@ -1269,6 +1272,14 @@ contains
                      do_puthist_3   ) ! [OUT]
     if( do_puthist_3 ) do_puthist = .true.
 
+    ! Check whether the item has been already registered
+    call HIST_reg( histitemid, 'qnc', 'droplet mass mixing ratio', 'kg/kg', 3)
+    ! Check whether it is time to input the item
+    do_puthist_4 = .false.
+    call HIST_query( histitemid,  & ! [IN]
+                     do_puthist_4   ) ! [OUT]
+    if( do_puthist_4 ) do_puthist = .true.
+
     if( do_puthist ) then
        sdx_tmp  => sd_dtmp1
        sdy_tmp  => sd_dtmp2
@@ -1322,6 +1333,15 @@ contains
           call HIST_in( rhodropmom3(:,:,:), 'DMOM3', 'density of the 3rd droplet moment', 'm3/m3')
        end if
 
+       if( do_puthist_4 )then
+       ! droplet mass mixing ratio
+          call sdm_sd2massmxratio(zph_crs,qna,sdnum_tmp,sdn_tmp,sdliqice_tmp, &
+               & sdx_tmp,sdy_tmp,sdr_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp,sdrkl_s2c,sdrku_s2c,DENS, &
+               & sd_itmp1)
+
+          call HIST_in( qnc(:,:,:), 'qnc', 'droplet mass mixing ratio', 'kg/kg',)
+       end if
+
        nullify(sdx_tmp)
        nullify(sdy_tmp)
        nullify(sdrk_tmp)
@@ -1336,6 +1356,56 @@ contains
        nullify(sdasl_tmp)
 
     endif
+
+    ! calculate aerosol number density and mass mixing ratio
+    ! Check whether the item has been already registered
+    call HIST_reg( histitemid, 'Na', 'aerosol number density', 'num/m3', 3)
+    call HIST_reg( histitemid, 'qna', 'aerosol mass mixing ratio', 'kg/kg', 3)
+    sdx_tmp  => sd_dtmp1
+    sdy_tmp  => sd_dtmp2
+    sdrk_tmp => sd_dtmp3
+    sdz_tmp  => sd_dtmp4 ! diagnostic variable
+    sdri_tmp => sd_dtmp5 ! diagnostic variable (for now)
+    sdrj_tmp => sd_dtmp6 ! diagnostic variable (for now)
+    sdr_tmp  => sd_dtmp7
+    sdvz_tmp => sd_dtmp8 ! diagnostic variable
+    sdliqice_tmp => sd_i2tmp1
+    sdice_tmp=> sd_icetmp1
+    sdn_tmp  => sd_i8tmp1
+    sdasl_tmp=> sd_asltmp1
+
+    call sdm_rhot_qtrc2p_t(RHOT,QTRC,DENS,pres_scale,t_scale)
+    call sdm_copy_selected_sd(sdnum_s2c,sdnumasl_s2c,sdn_s2c,sdx_s2c,sdy_s2c,sdri_s2c,sdrj_s2c,sdrk_s2c, &
+         &                    sdliqice_s2c,sdasl_s2c,sdr_s2c,sdice_s2c,                                  &
+         &                    sdnum_tmp,sdnumasl_tmp,sdn_tmp,sdx_tmp,sdy_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp, &
+         &                    sdliqice_tmp,sdasl_tmp,sdr_tmp,sdice_tmp,                                  &
+         &                    t_scale,sd_itmp1,sdtype='aerosol') ! options: 'all', 'large', 'activated','aerosol'
+    ! aerosol number density
+    order_n = 0
+    call sdm_sd2rhodropmom(order_n,zph_crs,Na,sdnum_tmp,sdn_tmp,sdliqice_tmp, &
+         & sdx_tmp,sdy_tmp,sdr_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp,sdrkl_s2c,sdrku_s2c,    &
+         & sd_itmp1)
+
+    call HIST_in( Na(:,:,:), 'Na', 'aerosol number density', 'num/m3')
+    ! aerosol mass mixing ratio
+    call sdm_sd2massmxratio(zph_crs,qna,sdnum_tmp,sdn_tmp,sdliqice_tmp, &
+         & sdx_tmp,sdy_tmp,sdr_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp,sdrkl_s2c,sdrku_s2c,DENS, &
+         & sd_itmp1)
+
+    call HIST_in( qna(:,:,:), 'qna', 'aerosol mass mixing ratio', 'kg/kg',)
+
+    nullify(sdx_tmp)
+    nullify(sdy_tmp)
+    nullify(sdrk_tmp)
+    nullify(sdz_tmp)
+    nullify(sdri_tmp)
+    nullify(sdrj_tmp)
+    nullify(sdr_tmp)
+    nullify(sdvz_tmp)
+    nullify(sdliqice_tmp)
+    nullify(sdice_tmp)
+    nullify(sdn_tmp)
+    nullify(sdasl_tmp)
 
 #ifdef _FIPP_
     ! Section specification for fipp profiler
@@ -2353,7 +2423,7 @@ contains
                              sd_ri,sd_rj,sd_rk,sd_n,Nact,Ndeact)
             Nact_temp = Nact_temp + Nact
             Ndeact_temp = Ndeact_temp + Ndeact
-            if(mod(t,int(TIME_DTSEC/sdm_dtevl))==0) then
+            if(mod(t,int(dt/sdm_dtevl))==0) then
                 Nact_avg = Nact_temp/int(TIME_DTSEC/sdm_dtevl)
                 Ndeact_avg = Ndeact_temp/int(TIME_DTSEC/sdm_dtevl)
                 Nact_temp = 0.0_RP
