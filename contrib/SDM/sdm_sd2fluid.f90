@@ -1612,7 +1612,6 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   use m_sdm_coordtrans, only: &
        sdm_x2ri, sdm_y2rj
   ! Input variables
-  integer,intent(in)  :: order_n               ! order of the droplet moment
   real(RP),intent(in) :: zph_crs(KA,IA,JA)    ! z physical coordinate
   integer, intent(in) :: sd_num               ! number of super-droplets
   integer(DP), intent(in) :: sd_n(1:sd_num)   ! multiplicity of super-droplets
@@ -1694,7 +1693,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
         k = floor(sd_rk(n))+1
 
         tmp_sdm(i_threads,k,i,j) = tmp_sdm(i_threads,k,i,j)                        &
-             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3.0_RP * real(sd_n(n),kind=RP)/(DENS(k,j,i)*3.0_RP)
+             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3 * real(sd_n(n),kind=RP)/(DENS(k,i,j)*3.0_RP)
 
      end do
      end do

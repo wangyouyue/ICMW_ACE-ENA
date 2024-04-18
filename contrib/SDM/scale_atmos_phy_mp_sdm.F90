@@ -772,7 +772,7 @@ contains
     use m_sdm_motion, only: &
        sdm_getvz_liq, sdm_getvz_ice
     use m_sdm_sd2fluid, only: &
-         sdm_sd2qcqr,sdm_sd2qiqsqg,sdm_sd2rhosd,sdm_sd2rhodropmom
+         sdm_sd2qcqr,sdm_sd2qiqsqg,sdm_sd2rhosd,sdm_sd2rhodropmom,sdm_sd2massmxratio
     use m_sdm_idutil, only: &
          sdm_copy_selected_sd
 
@@ -820,7 +820,7 @@ contains
     real(RP) :: rhodropmom3(KA,IA,JA) ! density of the 3rd droplet moment
     real(RP) :: Na(KA,IA,JA) ! density of the 0th aerosol moment
     real(RP) :: qna(KA,IA,JA) ! aerosol number mixing ratio
-    real(RP) :: qnc(KA,IA,JA) ! cloud droplet number mixing ratio
+    real(RP) :: qnd(KA,IA,JA) ! cloud droplet number mixing ratio
 
     real(RP), pointer :: sdx_tmp(:),sdy_tmp(:),sdrk_tmp(:),sdz_tmp(:),sdri_tmp(:),sdrj_tmp(:),sdr_tmp(:),sdvz_tmp(:)
     real(RP), pointer :: sdasl_tmp(:,:)
@@ -1273,7 +1273,7 @@ contains
     if( do_puthist_3 ) do_puthist = .true.
 
     ! Check whether the item has been already registered
-    call HIST_reg( histitemid, 'qnc', 'droplet mass mixing ratio', 'kg/kg', 3)
+    call HIST_reg( histitemid, 'qnd', 'droplet mass mixing ratio', 'kg/kg', 3)
     ! Check whether it is time to input the item
     do_puthist_4 = .false.
     call HIST_query( histitemid,  & ! [IN]
@@ -1335,11 +1335,11 @@ contains
 
        if( do_puthist_4 )then
        ! droplet mass mixing ratio
-          call sdm_sd2massmxratio(zph_crs,qna,sdnum_tmp,sdn_tmp,sdliqice_tmp, &
+          call sdm_sd2massmxratio(zph_crs,qnd,sdnum_tmp,sdn_tmp,sdliqice_tmp, &
                & sdx_tmp,sdy_tmp,sdr_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp,sdrkl_s2c,sdrku_s2c,DENS, &
                & sd_itmp1)
 
-          call HIST_in( qnc(:,:,:), 'qnc', 'droplet mass mixing ratio', 'kg/kg',)
+          call HIST_in( qnd(:,:,:), 'qnd', 'droplet mass mixing ratio', 'kg/kg')
        end if
 
        nullify(sdx_tmp)
@@ -1392,7 +1392,7 @@ contains
          & sdx_tmp,sdy_tmp,sdr_tmp,sdri_tmp,sdrj_tmp,sdrk_tmp,sdrkl_s2c,sdrku_s2c,DENS, &
          & sd_itmp1)
 
-    call HIST_in( qna(:,:,:), 'qna', 'aerosol mass mixing ratio', 'kg/kg',)
+    call HIST_in( qna(:,:,:), 'qna', 'aerosol mass mixing ratio', 'kg/kg')
 
     nullify(sdx_tmp)
     nullify(sdy_tmp)
