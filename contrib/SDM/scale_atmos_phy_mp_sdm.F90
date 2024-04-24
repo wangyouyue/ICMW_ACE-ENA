@@ -828,11 +828,11 @@ contains
     integer(DP), pointer :: sdn_tmp(:)
     type(sdicedef), pointer :: sdice_tmp
     integer :: sdnum_tmp, sdnumasl_tmp
-    real(RP):: sdx_tmp1(1:sdnum_tmp),sdy_tmp1(1:sdnum_tmp),sdrk_tmp1(1:sdnum_tmp),sdz_tmp1(1:sdnum_tmp)
-    real(RP):: sdri_tmp1(1:sdnum_tmp),sdrj_tmp1(1:sdnum_tmp),sdr_tmp1(1:sdnum_tmp),sdasl_tmp1(1:sdnum_tmp,1:sdnumasl_tmp)
-    integer(i2) :: sdliqice_tmp1(1:sdnum_tmp)
-    integer(DP) :: sdn_tmp1(1:sdnum_tmp)
-    type(sdicedef) :: sdice_tmp1
+    real(RP), allocatable :: sdx_tmp1(:),sdy_tmp1(:),sdrk_tmp1(:),sdz_tmp1(:)
+    real(RP), allocatable :: sdri_tmp1(:),sdrj_tmp1(:),sdr_tmp1(:),sdasl_tmp1(:,:)
+    integer(i2), allocatable :: sdliqice_tmp1(:)
+    integer(DP), allocatable :: sdn_tmp1(:)
+    type(sdicedef), allocatable :: sdice_tmp1
     integer :: histitemid
     logical :: do_puthist, do_puthist_0, do_puthist_1, do_puthist_2, do_puthist_3, do_puthist_4
     integer :: order_n
@@ -1245,6 +1245,18 @@ contains
     ! Check whether the item has been already registered
     call HIST_reg( histitemid, 'Na', 'aerosol number density', 'num/m3', 3)
     call HIST_reg( histitemid, 'qna', 'aerosol mass mixing ratio', 'kg/kg', 3)
+
+    allocate(sdx_tmp1(size(sd_dtmp1)))
+    allocate(sdy_tmp1(size(sd_dtmp2)))
+    allocate(sdrk_tmp1(size(sd_dtmp3)))
+    allocate(sdz_tmp1(size(sd_dtmp4)))
+    allocate(sdri_tmp1(size(sd_dtmp5)))
+    allocate(sdrj_tmp1(size(sd_dtmp6)))
+    allocate(sdr_tmp1(size(sd_dtmp7)))
+    allocate(sdliqice_tmp1(size(sd_i2tmp1)))
+    allocate(sdice_tmp1(size(sd_icetmp1)))
+    allocate(sdn_tmp1(size(sd_i8tmp1)))
+    allocate(sdasl_tmp1(size(sd_asltmp1)))
     sdx_tmp1  = sd_dtmp1
     sdy_tmp1  = sd_dtmp2
     sdrk_tmp1 = sd_dtmp3
@@ -1276,6 +1288,18 @@ contains
          & sd_itmp1)
 
     call HIST_in( qna(:,:,:), 'qna', 'aerosol mass mixing ratio', 'kg/kg')
+
+    deallocate(sdx_tmp1)
+    deallocate(sdy_tmp1)
+    deallocate(sdrk_tmp1)
+    deallocate(sdz_tmp1)
+    deallocate(sdri_tmp1)
+    deallocate(sdrj_tmp1)
+    deallocate(sdr_tmp1)
+    deallocate(sdliqice_tmp1)
+    deallocate(sdice_tmp1)
+    deallocate(sdn_tmp1)
+    deallocate(sdasl_tmp1)
 
     !!!!!!!!!!!!!!!!!!!!!
     !!!! History output of the density of droplet moments.
