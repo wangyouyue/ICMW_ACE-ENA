@@ -1636,7 +1636,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   ! Work variables
   real(RP) :: dcoef(KA,IA,JA)    ! coef.
   real(RP) :: drate        ! temporary
-  real(RP), intent :: mmxratio_sdm_temp(KA,IA,JA)
+  real(RP) :: mmxratio_sdm_temp(KA,IA,JA)
   integer :: cnt                ! counter
   integer :: i, j, k, kl, ku, m, n    ! index
   integer :: tlist
