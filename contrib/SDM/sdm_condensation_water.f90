@@ -49,7 +49,7 @@ contains
          epsva=> CONST_EPSvap, &
          rd   => CONST_Rdry
     use scale_grid_index, only: &
-         IA,JA,KA
+        IA,JA,KA,IS,IE,JS,JE,KS,KE
     use scale_atmos_saturation, only: &
         ATMOS_SATURATION_pres2qsat_liq, &
         ATMOS_SATURATION_psat_liq
@@ -125,6 +125,7 @@ contains
     real(RP) :: dtmp      ! temporary for interation
     real(RP) :: rddvcp    ! rd / cp
     integer :: idx_nasl(1:22)  ! index for vactorization
+    real(RP) :: dcoef(KA,IA,JA)    ! coef.
 
     integer :: i, j, k, n, s, t, it               ! index
     ! Parameters
@@ -331,9 +332,9 @@ contains
        end do
 
        ! calculate aerosol activation/deactivation rate
-       if( (rdi >= Rc) .and. (crd < Rc) ) then
+       if( (rdi > Rc) .and. (crd <= Rc) ) then
           Nact(k,i,j) = Nact(k,i,j) + sd_n(n)
-       elseif( (rdi < Rc) .and. (crd >= Rc) ) then
+       elseif( (rdi <= Rc) .and. (crd > Rc) ) then
           Ndeact(k,i,j) = Ndeact(k,i,j) + sd_n(n)
        end if
 
@@ -346,8 +347,8 @@ contains
     do j = JS, JE
        dcoef(k,i,j) = dxiv_sdm(i) * dyiv_sdm(j) &
             / (zph_crs(k,i,j)-zph_crs(k-1,i,j))
-       Nact(k,i,j)= Nact(k,i,j)*dcoef/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
-       Ndeact(k,i,j)= Ndeact(k,i,j)*dcoef/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
+       Nact(k,i,j)= Nact(k,i,j)*dcoef(k,i,j)/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
+       Ndeact(k,i,j)= Ndeact(k,i,j)*dcoef(k,i,j)/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
     enddo
     enddo
     enddo

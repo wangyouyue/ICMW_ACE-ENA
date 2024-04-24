@@ -1608,7 +1608,9 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   use scale_grid_index, only: &
        IA,JA,KA,IS,IE,JS,JE,KS,KE
   use m_sdm_common, only: &
-       dxiv_sdm, dyiv_sdm, VALID2INVALID, num_threads, STAT_LIQ, i2, ONE_PI, DWATR
+       dxiv_sdm, dyiv_sdm, VALID2INVALID, num_threads, STAT_LIQ, i2, ONE_PI, F_THRD
+  use scale_const, only: &
+       rw => CONST_DWATR
   use m_sdm_coordtrans, only: &
        sdm_x2ri, sdm_y2rj
   ! Input variables
@@ -1634,6 +1636,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   ! Work variables
   real(RP) :: dcoef(KA,IA,JA)    ! coef.
   real(RP) :: drate        ! temporary
+  real(RP), intent :: mmxratio_sdm_temp(KA,IA,JA)
   integer :: cnt                ! counter
   integer :: i, j, k, kl, ku, m, n    ! index
   integer :: tlist
@@ -1643,7 +1646,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
 
 #ifdef _FAPP_
   ! Section specification for fapp profiler
-  call fapp_start("sdm_sd2rhodropmom",1,1)
+  call fapp_start("sdm_sd2massmxratio",1,1)
 #endif
   call sdm_x2ri(sd_num,sd_x,sd_ri,sd_rk)
   call sdm_y2rj(sd_num,sd_y,sd_rj,sd_rk)
@@ -1652,7 +1655,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   do k = KS, KE
   do i = IS, IE
   do j = JS, JE
-     dcoef(k,i,j) = dxiv_sdm(i) * dyiv_sdm(j) &
+     dcoef(k,i,j) = F_THRD * ONE_PI * dxiv_sdm(i) * dyiv_sdm(j) &
           / (zph_crs(k,i,j)-zph_crs(k-1,i,j))
   enddo
   enddo
@@ -1661,7 +1664,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   do k=1,KA
   do j=1,JA
   do i=1,IA
-     mmxratio_sdm(k,i,j) = 0.0_RP
+     mmxratio_sdm_temp(k,i,j) = 0.0_RP
   end do
   end do
   end do
@@ -1693,7 +1696,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
         k = floor(sd_rk(n))+1
 
         tmp_sdm(i_threads,k,i,j) = tmp_sdm(i_threads,k,i,j)                        &
-             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3 * real(sd_n(n),kind=RP)/3.0_RP
+             &                    + sd_r(n) * sd_r(n) * sd_r(n) * rw * real(sd_n(n),kind=RP)
 
      end do
      end do
@@ -1702,7 +1705,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
      do j=1,JA
      do i=1,IA
      do i_threads=1,num_threads
-        mmxratio_sdm(k,i,j)=mmxratio_sdm(k,i,j)+tmp_sdm(i_threads,k,i,j)
+        mmxratio_sdm_temp(k,i,j)=mmxratio_sdm_temp(k,i,j)+tmp_sdm(i_threads,k,i,j)
      end do
      end do
      end do
@@ -1715,18 +1718,18 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
         kl    = floor(sd_rkl(i,j))+1
         drate = real(kl,kind=RP) - sd_rkl(i,j)
         if( drate<0.50_RP ) then
-           mmxratio_sdm(kl,i,j) = 0.0_RP           !! <50% in share
+           mmxratio_sdm_temp(kl,i,j) = 0.0_RP           !! <50% in share
         else
-           mmxratio_sdm(kl,i,j) = mmxratio_sdm(kl,i,j)/drate
+           mmxratio_sdm_temp(kl,i,j) = mmxratio_sdm_temp(kl,i,j)/drate
         end if
 
         !! at upper boundary
         ku    = floor(sd_rku(i,j))+1
         drate = sd_rku(i,j) - real(ku-1,kind=RP)
         if( drate<0.50_RP ) then
-           mmxratio_sdm(ku,i,j) = 0.0_RP           !! <50% in share
+           mmxratio_sdm_temp(ku,i,j) = 0.0_RP           !! <50% in share
         else
-           mmxratio_sdm(ku,i,j) = mmxratio_sdm(ku,i,j)/drate
+           mmxratio_sdm_temp(ku,i,j) = mmxratio_sdm_temp(ku,i,j)/drate
         end if
      end do
      end do
@@ -1735,7 +1738,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
      do k=KS,KE
      do j=JS,JE
      do i=IS,IE
-        mmxratio_sdm(k,i,j) = mmxratio_sdm(k,i,j) * dcoef(k,i,j)/DENS(k,i,j)
+        mmxratio_sdm(k,i,j) = mmxratio_sdm_temp(k,i,j) * dcoef(k,i,j)/DENS(k,i,j)
      end do
      end do
      end do
@@ -1744,7 +1747,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
 
 #ifdef _FAPP_
   ! Section specification for fapp profiler
-  call fapp_stop("sdm_sd2rhodropmom",1,1)
+  call fapp_stop("sdm_sd2massmxratio",1,1)
 #endif
   return
 end subroutine sdm_sd2massmxratio

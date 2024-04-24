@@ -2193,10 +2193,6 @@ contains
    real(RP) :: sdm_dtmlt  ! time step of {melt/freeze of super-droplets} process
    real(RP) :: sdm_dtsbl  ! time step of {sublimation/deposition of super-droplets} process
    real(RP) :: tmp_mink
-   !real(RP) :: Nact(KA,IA,JA) ! aerosol activation rate
-   !real(RP) :: Ndeact(KA,IA,JA) ! aerosol deactivation rate
-   !real(RP) :: Nact_temp(KA,IA,JA) ! aerosol activation rate
-   !real(RP) :: Ndeact_temp(KA,IA,JA) ! aerosol deactivation rate
   !---------------------------------------------------------------------
 
       ! Initialize and rename variables
@@ -2421,14 +2417,6 @@ contains
                              pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS, &
                              sd_num,sd_numasl,sd_liqice,sd_x,sd_y,sd_r,sd_asl,&
                              sd_ri,sd_rj,sd_rk,sd_n,Nact_avg,Ndeact_avg)
-            !Nact_temp = Nact_temp + Nact
-            !Ndeact_temp = Ndeact_temp + Ndeact
-            !if(mod(t,int(dt/sdm_dtevl))==0) then
-            !    Nact_avg = Nact_temp/int(TIME_DTSEC/sdm_dtevl)
-            !    Ndeact_avg = Ndeact_temp/int(TIME_DTSEC/sdm_dtevl)
-            !    Nact_temp = 0.0_RP
-            !    Ndeact_temp = 0.0_RP
-            !end if
 
             ! get density of liquid-water(qw) after process-1
             !! here cres_val1c is the rhow after condevp
@@ -2439,12 +2427,16 @@ contains
             ! exchange the vapor and heat to fluid variables
             call sdm_condevp_updatefluid(RHOT,QTRC,DENS,crs_val1p,crs_val1c)
             !! update the HALO region of the fluid variables
-            call COMM_vars8( RHOT(:,:,:), 1 )
-            call COMM_vars8( QTRC(:,:,:,I_QV), 2 )
-            call COMM_vars8( DENS(:,:,:), 3 )
-            call COMM_wait ( RHOT(:,:,:), 1 )
-            call COMM_wait ( QTRC(:,:,:,I_QV), 2 )
-            call COMM_wait ( DENS(:,:,:), 3 )
+            call COMM_vars8( Nact_avg(:,:,:), 1 )
+            call COMM_vars8( Ndeact_avg(:,:,:), 2 )
+            call COMM_vars8( RHOT(:,:,:), 3 )
+            call COMM_vars8( QTRC(:,:,:,I_QV), 4 )
+            call COMM_vars8( DENS(:,:,:), 5 )
+            call COMM_wait( Nact_avg(:,:,:), 1 )
+            call COMM_wait( Ndeact_avg(:,:,:), 2 )
+            call COMM_wait ( RHOT(:,:,:), 3 )
+            call COMM_wait ( QTRC(:,:,:,I_QV), 4 )
+            call COMM_wait ( DENS(:,:,:), 5 )
 
          end if
 
