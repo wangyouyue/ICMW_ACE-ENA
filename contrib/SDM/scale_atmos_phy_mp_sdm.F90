@@ -1254,9 +1254,9 @@ contains
     allocate(sdrj_tmp1(size(sd_dtmp6)))
     allocate(sdr_tmp1(size(sd_dtmp7)))
     allocate(sdliqice_tmp1(size(sd_i2tmp1)))
-    allocate(sdice_tmp1(size(sd_icetmp1)))
+    allocate(sdice_tmp1)
     allocate(sdn_tmp1(size(sd_i8tmp1)))
-    allocate(sdasl_tmp1(size(sd_asltmp1)))
+    allocate(sdasl_tmp1(size(sd_asltmp1, 1), size(sd_asltmp1, 2)))
     sdx_tmp1  = sd_dtmp1
     sdy_tmp1  = sd_dtmp2
     sdrk_tmp1 = sd_dtmp3
