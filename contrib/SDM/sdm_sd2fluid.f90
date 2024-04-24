@@ -1693,7 +1693,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
         k = floor(sd_rk(n))+1
 
         tmp_sdm(i_threads,k,i,j) = tmp_sdm(i_threads,k,i,j)                        &
-             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3 * real(sd_n(n),kind=RP)/(DENS(k,i,j)*3.0_RP)
+             &                    + 4.0_RP*ONE_PI*DWATR*sd_r(n)**3 * real(sd_n(n),kind=RP)/3.0_RP
 
      end do
      end do
@@ -1735,7 +1735,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
      do k=KS,KE
      do j=JS,JE
      do i=IS,IE
-        mmxratio_sdm(k,i,j) = mmxratio_sdm(k,i,j) * dcoef(k,i,j)
+        mmxratio_sdm(k,i,j) = mmxratio_sdm(k,i,j) * dcoef(k,i,j)/DENS(k,i,j)
      end do
      end do
      end do

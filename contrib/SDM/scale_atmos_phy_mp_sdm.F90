@@ -1943,7 +1943,7 @@ contains
 
          call sdm_rhot_qtrc2p_t(RHOT,QTRC,DENS,pres_scale,t_scale)
 
-         call sdm_condevp(sdm_aslset,                                   &
+         call sdm_condevp(zph_crs,sdm_aslset,                           &
                           sdm_aslmw,sdm_aslion,sdm_dtevl,               &
                           pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS,     &
                           sdnum_s2c,sdnumasl_s2c,sdliqice_s2c,sdx_s2c,sdy_s2c,       &
@@ -2416,7 +2416,7 @@ contains
             !! diagnose necessary fluid variables
             call sdm_rhot_qtrc2p_t(RHOT,QTRC,DENS,pres_scale,t_scale)
             !! update the equivalent radius of SDs
-            call sdm_condevp(sdm_aslset,            &
+            call sdm_condevp(zph_crs,sdm_aslset,            &
                              sdm_aslmw,sdm_aslion,sdm_dtevl,      &
                              pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS, &
                              sd_num,sd_numasl,sd_liqice,sd_x,sd_y,sd_r,sd_asl,&
@@ -2980,7 +2980,7 @@ contains
 
          call sdm_rhot_qtrc2p_t(RHOT,QTRC,DENS,pres_scale,t_scale)
 
-         call sdm_condevp(sdm_aslset,                              &
+         call sdm_condevp(zph_crs,sdm_aslset,                              &
                           sdm_aslmw,sdm_aslion,sdm_dtevl,           &
                           pres_scale,t_scale,QTRC(:,:,:,I_QV),DENS, &
                           sd_fmnum,sd_numasl,sd_fmliqice,sd_fmx,sd_fmy,sd_fmr,      &

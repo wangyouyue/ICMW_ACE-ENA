@@ -35,11 +35,11 @@ module m_sdm_condensation_water
   public :: sdm_condevp,sdm_condevp_updatefluid
 
 contains
-  subroutine sdm_condevp(sdm_aslset,                     &
+  subroutine sdm_condevp(zph_crs, sdm_aslset,           &
        sdm_aslmw,sdm_aslion,sdm_dtevl, &
        pres_scale,t_scale,qv_scale,DENS, &
        sd_num,sd_numasl,sd_liqice,sd_x,sd_y,     &
-       sd_r,sd_asl,sd_ri,sd_rj,sd_rk,sd_n,Nact,Ndeact    )
+       sd_r,sd_asl,sd_ri,sd_rj,sd_rk,sd_n,Nact,Ndeact   )
     
     use scale_const, only: &
          cp   => CONST_CPdry, &
@@ -59,11 +59,10 @@ contains
          sdm_x2ri, sdm_y2rj
     use m_sdm_common, only: &
          mass_amsul, ion_amsul, mass_nacl, ion_nacl, &
-         VALID2INVALID, &
+         VALID2INVALID, dxiv_sdm, dyiv_sdm, &
          RLRv_D, LatGas, L_RL_K, CurveF, ASL_FF, STAT_LIQ, i2
-    use scale_grid, only: &
-         DX,DY,DZ
     ! Input variables
+    real(RP), intent(in) :: zph_crs(KA,IA,JA)    ! z physical coordinate
     integer,  intent(in) :: sdm_aslset
     real(RP), intent(in) :: sdm_aslmw(20)
     real(RP), intent(in) :: sdm_aslion(20)
@@ -333,16 +332,25 @@ contains
 
        ! calculate aerosol activation/deactivation rate
        if( (rdi >= Rc) .and. (crd < Rc) ) then
-          Nact(k,i,j) = Nact(k,i,j) + sd_n(n) / DENS(k,i,j)
+          Nact(k,i,j) = Nact(k,i,j) + sd_n(n)
        elseif( (rdi < Rc) .and. (crd >= Rc) ) then
-          Ndeact(k,i,j) = Ndeact(k,i,j) + sd_n(n) / DENS(k,i,j)
+          Ndeact(k,i,j) = Ndeact(k,i,j) + sd_n(n)
        end if
 
        sd_r(n) = rdi   !! particle radius at future
 
     end do
-    Nact   = Nact/(sdm_dtevl*DX*DY*DZ*1.E+6_RP)    !! num*m3/kg => num/mg*s
-    Ndeact = Ndeact/(sdm_dtevl*DX*DY*DZ*1.E+6_RP)    !! num*m3/kg => num/mg*s
+
+    do k = KS, KE
+    do i = IS, IE
+    do j = JS, JE
+       dcoef(k,i,j) = dxiv_sdm(i) * dyiv_sdm(j) &
+            / (zph_crs(k,i,j)-zph_crs(k-1,i,j))
+       Nact(k,i,j)= Nact(k,i,j)*dcoef/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
+       Ndeact(k,i,j)= Ndeact(k,i,j)*dcoef/(DENS(k,i,j)*sdm_dtevl*1.E+6_RP)    !! num*m3/kg => num/mg*s
+    enddo
+    enddo
+    enddo
 
 #ifdef _FAPP_
     ! Section specification for fapp profiler
