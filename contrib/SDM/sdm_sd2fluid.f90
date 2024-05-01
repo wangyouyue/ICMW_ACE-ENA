@@ -1636,7 +1636,6 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   ! Work variables
   real(RP) :: dcoef(KA,IA,JA)    ! coef.
   real(RP) :: drate        ! temporary
-  real(RP) :: mmxratio_sdm_temp(KA,IA,JA)
   integer :: cnt                ! counter
   integer :: i, j, k, kl, ku, m, n    ! index
   integer :: tlist
@@ -1664,7 +1663,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
   do k=1,KA
   do j=1,JA
   do i=1,IA
-     mmxratio_sdm_temp(k,i,j) = 0.0_RP
+     mmxratio_sdm(k,i,j) = 0.0_RP
   end do
   end do
   end do
@@ -1705,7 +1704,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
      do j=1,JA
      do i=1,IA
      do i_threads=1,num_threads
-        mmxratio_sdm_temp(k,i,j)=mmxratio_sdm_temp(k,i,j)+tmp_sdm(i_threads,k,i,j)
+        mmxratio_sdm(k,i,j)=mmxratio_sdm(k,i,j)+tmp_sdm(i_threads,k,i,j)
      end do
      end do
      end do
@@ -1718,18 +1717,18 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
         kl    = floor(sd_rkl(i,j))+1
         drate = real(kl,kind=RP) - sd_rkl(i,j)
         if( drate<0.50_RP ) then
-           mmxratio_sdm_temp(kl,i,j) = 0.0_RP           !! <50% in share
+           mmxratio_sdm(kl,i,j) = 0.0_RP           !! <50% in share
         else
-           mmxratio_sdm_temp(kl,i,j) = mmxratio_sdm_temp(kl,i,j)/drate
+           mmxratio_sdm(kl,i,j) = mmxratio_sdm(kl,i,j)/drate
         end if
 
         !! at upper boundary
         ku    = floor(sd_rku(i,j))+1
         drate = sd_rku(i,j) - real(ku-1,kind=RP)
         if( drate<0.50_RP ) then
-           mmxratio_sdm_temp(ku,i,j) = 0.0_RP           !! <50% in share
+           mmxratio_sdm(ku,i,j) = 0.0_RP           !! <50% in share
         else
-           mmxratio_sdm_temp(ku,i,j) = mmxratio_sdm_temp(ku,i,j)/drate
+           mmxratio_sdm(ku,i,j) = mmxratio_sdm(ku,i,j)/drate
         end if
      end do
      end do
@@ -1738,7 +1737,7 @@ subroutine sdm_sd2massmxratio(zph_crs,mmxratio_sdm,sd_num,sd_n,sd_liqice, &
      do k=KS,KE
      do j=JS,JE
      do i=IS,IE
-        mmxratio_sdm(k,i,j) = mmxratio_sdm_temp(k,i,j) * dcoef(k,i,j)/DENS(k,i,j)
+        mmxratio_sdm(k,i,j) = mmxratio_sdm(k,i,j) * dcoef(k,i,j)/DENS(k,i,j)
      end do
      end do
      end do
