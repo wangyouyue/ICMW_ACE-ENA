@@ -1463,8 +1463,7 @@ contains
         QAD => QA
       use scale_grid, only: &
         GRID_FX,    &
-        GRID_FY,    &
-        DZ, DX, DY
+        GRID_FY
       use m_sdm_coordtrans, only: &
         sdm_z2rk
       use m_sdm_fluidconv, only: &
@@ -1525,9 +1524,6 @@ contains
       real(RP) :: sdm_dtadv  ! time step of {motion of super-droplets} process
       real(RP) :: sdm_dtmlt  ! time step of {melt/freeze of super-droplets} process
       real(RP) :: sdm_dtsbl  ! time step of {sublimation/deposition of super-droplets} process
-      real(RP) :: sd_rk
-      real(RP) :: sd_ri
-      real(RP) :: sd_rj
      !
       real(RP) :: area, INAS_max, prob_INIA, INAS_tf, probdens_tf
 
@@ -1689,10 +1685,8 @@ contains
               * real(sdm_zupper-(minzph+sdm_zlower),kind=RP)
       end do
 
-      !! invalid super-droplets
-      do n=nint(sdininum_s2c)+1,sdnum_s2c
-         sdz_s2c(n) = INVALID
-      end do
+      call sdm_z2rk(sdm_zlower,sdm_zupper,            &
+                        sdnum_s2c,sdx_s2c,sdy_s2c,sdz_s2c,sdri_s2c,sdrj_s2c,sdrk_s2c )
 
       !### Aerosol mass, muliplicity ###!
       do k=1,sdnumasl_s2c
@@ -1768,13 +1762,9 @@ contains
 	       !! This only for soluble particles, not for insoluble particles
                sdn_tmp = sdn_tmp * sdm_fctr2multi
 
-               sd_rk = sdz_s2c(n) / DZ
-               sd_ri = mod( sdx_s2c(n), IMAX * DX ) / DX
-               sd_rj = mod( sdy_s2c(n), JMAX * DY ) / DY
-
-               index_x = floor(sd_ri)+1
-               index_y = floor(sd_rj)+1
-               index_z = floor(sd_rk)+1
+               index_x = floor(sd_ri(n))+1
+               index_y = floor(sd_rj(n))+1
+               index_z = floor(sd_rk(n))+1
 
                sdn_tmp = sdn_tmp * DENS(index_z,index_x,index_y) / 1.22_RP ! surface density
 
@@ -1916,6 +1906,11 @@ contains
          if( sdn_s2c(n)== 0 ) then
             sdz_s2c(n) = INVALID     !!! check muliplicity
          end if
+      end do
+
+      !! invalid super-droplets
+      do n=nint(sdininum_s2c)+1,sdnum_s2c
+         sdz_s2c(n) = INVALID
       end do
 
 !!$      sdnum_tmp1 = int( nint(sdininum_s2c)/nomp )
