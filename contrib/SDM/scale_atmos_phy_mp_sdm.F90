@@ -1463,7 +1463,8 @@ contains
         QAD => QA
       use scale_grid, only: &
         GRID_FX,    &
-        GRID_FY
+        GRID_FY,    &
+        DZ, DX, DY
       use m_sdm_coordtrans, only: &
         sdm_z2rk
       use m_sdm_fluidconv, only: &
@@ -1507,7 +1508,7 @@ contains
       real(RP) :: delta1, delta2, sdn_tmp       ! temporary
       logical :: lsdmup                         ! flag for updating water hydrometeor by SDM
       integer :: iexced, sdnum_tmp1, sdnum_tmp2 ! temporary
-      integer :: i, j, k, n, iq, np             ! index
+      integer :: i, j, k, n, iq, np, index_z, index_y, index_x             ! index
       real(RP) :: crs_dtmp1(KA,IA,JA), crs_dtmp2(KA,IA,JA), crs_dtmp3(KA,IA,JA)
       integer :: sd_str, sd_end, sd_valid
 
@@ -1524,7 +1525,9 @@ contains
       real(RP) :: sdm_dtadv  ! time step of {motion of super-droplets} process
       real(RP) :: sdm_dtmlt  ! time step of {melt/freeze of super-droplets} process
       real(RP) :: sdm_dtsbl  ! time step of {sublimation/deposition of super-droplets} process
-
+      real(RP) :: sd_rk
+      real(RP) :: sd_ri
+      real(RP) :: sd_rj
      !
       real(RP) :: area, INAS_max, prob_INIA, INAS_tf, probdens_tf
 
@@ -1672,6 +1675,25 @@ contains
       !### status(liquid/ice) of super-droplets ###!
       sdliqice_s2c(1:sdnum_s2c) = STAT_LIQ
 
+      !### position of super-droplets in horizontal ###!
+      do n=1,sdnum_s2c
+         sdx_s2c(n) = xmax_sdm * sdx_s2c(n)+GRID_FX(IS-1)
+         sdy_s2c(n) = ymax_sdm * sdy_s2c(n)+GRID_FY(JS-1)
+      end do
+
+      !### position of super-droplets in vertical ###!
+      !! valid super-droplets
+      do n=1,nint(sdininum_s2c)
+        sdz_s2c(n) = real(minzph+sdm_zlower,kind=RP)             &
+              + sdz_s2c(n)                                  &
+              * real(sdm_zupper-(minzph+sdm_zlower),kind=RP)
+      end do
+
+      !! invalid super-droplets
+      do n=nint(sdininum_s2c)+1,sdnum_s2c
+         sdz_s2c(n) = INVALID
+      end do
+
       !### Aerosol mass, muliplicity ###!
       do k=1,sdnumasl_s2c
          do n=1,sdnum_s2c
@@ -1745,6 +1767,16 @@ contains
 	       !! Multiply the initial number density of soluble aerosol particles by sdm_fctr2multi
 	       !! This only for soluble particles, not for insoluble particles
                sdn_tmp = sdn_tmp * sdm_fctr2multi
+
+               sd_rk = sdz_s2c(n) / DZ
+               sd_ri = mod( sdx_s2c(n), IMAX * DX ) / DX
+               sd_rj = mod( sdy_s2c(n), JMAX * DY ) / DY
+
+               index_x = floor(sd_ri)+1
+               index_y = floor(sd_rj)+1
+               index_z = floor(sd_rk)+1
+
+               sdn_tmp = sdn_tmp * DENS(index_z,index_x,index_y) / 1.22_RP ! surface density
 
                !! check muliplicity
                if( sdn_tmp<(2.0_RP**63.0_RP) ) then
@@ -1880,29 +1912,12 @@ contains
          call PRC_MPIstop
       end if
 
-      !### position of super-droplets in horizontal ###!
-      do n=1,sdnum_s2c
-         sdx_s2c(n) = xmax_sdm * sdx_s2c(n)+GRID_FX(IS-1)
-         sdy_s2c(n) = ymax_sdm * sdy_s2c(n)+GRID_FY(JS-1)
-      end do
-
-      !### position of super-droplets in vertical ###!
-      !! valid super-droplets
       do n=1,nint(sdininum_s2c)
-         if( sdn_s2c(n)>0 ) then
-            sdz_s2c(n) = real(minzph+sdm_zlower,kind=RP)             &
-                 + sdz_s2c(n)                                  &
-                 * real(sdm_zupper-(minzph+sdm_zlower),kind=RP)
-         else
+         if( sdn_s2c(n)== 0 ) then
             sdz_s2c(n) = INVALID     !!! check muliplicity
          end if
       end do
 
-      !! invalid super-droplets
-      do n=nint(sdininum_s2c)+1,sdnum_s2c
-         sdz_s2c(n) = INVALID
-      end do
-      
 !!$      sdnum_tmp1 = int( nint(sdininum_s2c)/nomp )
 !!$      sdnum_tmp2 = mod( nint(sdininum_s2c),nomp )
 !!$
