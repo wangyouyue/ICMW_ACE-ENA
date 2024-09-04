@@ -1685,6 +1685,11 @@ contains
               * real(sdm_zupper-(minzph+sdm_zlower),kind=RP)
       end do
 
+      !! invalid super-droplets
+      do n=nint(sdininum_s2c)+1,sdnum_s2c
+         sdz_s2c(n) = INVALID
+      end do
+
       call sdm_z2rk(sdm_zlower,sdm_zupper,            &
                         sdnum_s2c,sdx_s2c,sdy_s2c,sdz_s2c,sdri_s2c,sdrj_s2c,sdrk_s2c )
 
@@ -1908,10 +1913,6 @@ contains
          end if
       end do
 
-      !! invalid super-droplets
-      do n=nint(sdininum_s2c)+1,sdnum_s2c
-         sdz_s2c(n) = INVALID
-      end do
 
 !!$      sdnum_tmp1 = int( nint(sdininum_s2c)/nomp )
 !!$      sdnum_tmp2 = mod( nint(sdininum_s2c),nomp )
