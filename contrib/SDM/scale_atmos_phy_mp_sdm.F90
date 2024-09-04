@@ -1767,9 +1767,9 @@ contains
 	       !! This only for soluble particles, not for insoluble particles
                sdn_tmp = sdn_tmp * sdm_fctr2multi
 
-               index_x = floor(sd_ri(n))+1
-               index_y = floor(sd_rj(n))+1
-               index_z = floor(sd_rk(n))+1
+               index_x = floor(sdri_s2c(n))+1
+               index_y = floor(sdrj_s2c(n))+1
+               index_z = floor(sdrk_s2c(n))+1
 
                sdn_tmp = sdn_tmp * DENS(index_z,index_x,index_y) / 1.22_RP ! surface density
 
