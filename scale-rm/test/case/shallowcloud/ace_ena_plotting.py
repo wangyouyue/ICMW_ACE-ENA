@@ -25,6 +25,7 @@ PROFILE_TOP_M = 1440.0
 DEFAULT_VIDEO_DPI = 200
 DEFAULT_IMAGE_DPI = 600
 DEFAULT_IMAGE_FORMAT = "pdf"
+DEFAULT_EXPECTED_END_SECONDS = 28800.0
 
 COLORS = {
     "blue": "#0072B2",
@@ -146,6 +147,23 @@ def time_values_in_seconds(time_coord):
     if "minute" in units:
         return numeric_values * 60.0
     return numeric_values
+
+
+def warn_if_incomplete_time_axis(ds, source_label):
+    if "time" not in ds:
+        return
+
+    time_seconds = np.asarray(time_values_in_seconds(ds["time"]), dtype=float)
+    if time_seconds.size == 0:
+        print(f"WARNING: {source_label} has an empty time axis.")
+        return
+
+    expected_end_seconds = float(os.environ.get("ACE_ENA_EXPECTED_END_SECONDS", DEFAULT_EXPECTED_END_SECONDS))
+    tolerance = max(1.0e-6, 0.01 * np.nanmedian(np.diff(time_seconds)) if time_seconds.size > 1 else 1.0e-6)
+    if time_seconds[-1] < expected_end_seconds - tolerance:
+        print(f"WARNING: {source_label} time axis is incomplete.")
+        print(f"  Expected end time: {expected_end_seconds:g} seconds.")
+        print(f"  Last available time: {time_seconds[-1]:g} seconds.")
 
 
 def format_nc_time(time_coord, frame):
@@ -288,6 +306,7 @@ def run_stat_plots(input_filename, output_suffix, default_data_dir=None):
     with xr.open_dataset(input_path) as ds:
         frames = selected_frames(len(ds["time"]), args.frame_step, args.max_frames)
         print(f"Using {len(frames)} of {len(ds['time'])} NetCDF time levels.")
+        warn_if_incomplete_time_axis(ds, input_path.name)
         image_format = parse_image_format(args.image_format)
         plot_time_series(ds, output_dir, output_suffix, image_format, args.image_dpi)
         plot_cloud_diagnostics(ds, output_dir, output_suffix, image_format, args.image_dpi)
@@ -492,6 +511,7 @@ def run_3d_plots(input_filename, output_suffix, default_data_dir=None):
     with xr.open_dataset(input_path, decode_times=False) as ds:
         frame_indices = selected_frames(len(ds["time"]), args.frame_step, args.max_frames)
         print(f"Using {len(frame_indices)} of {len(ds['time'])} NetCDF time levels.")
+        warn_if_incomplete_time_axis(ds, input_path.name)
         z_index = int(np.argmin(np.abs(ds["z"].values - args.z_slice_height)))
         y_index = int(np.argmin(np.abs(ds["y"].values - args.y_slice_location)))
         requested_variables = parse_variable_list(args.variables)

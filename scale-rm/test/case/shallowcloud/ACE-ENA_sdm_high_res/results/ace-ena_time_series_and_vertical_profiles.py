@@ -38,6 +38,14 @@ def read_value_from_config(key_to_find, file_path):
     print(f"Key '{key_to_find}' not found in the file.")
     return None
 
+def time_coordinate_to_seconds(time_coord):
+    values = np.asarray(time_coord.values)
+    if np.issubdtype(values.dtype, np.timedelta64):
+        return values / np.timedelta64(1, 's')
+    if np.issubdtype(values.dtype, np.datetime64):
+        return (values - values[0]) / np.timedelta64(1, 's')
+    return values.astype(float)
+
 config_path = '../run.conf'
 
 # Get PRC_NUM_X and PRC_NUM_Y from the configuration dictionary and calculate the total number of processes
@@ -53,6 +61,7 @@ output_interval1 = 30 # in sec
 output_interval2 = 300 # in sec
 start_index = start_tm // output_interval2
 water_density = 1e6  # water density, g/m3
+expected_end_time = read_value_from_config('TIME_DURATION', config_path)
 
 # Calculation time index: 0, 300, 600, 900, ... etc.
 # Assuming the initial time starts at 0 and is recorded every 30 seconds, so every 10th index is 300 seconds
@@ -62,10 +71,17 @@ directory = '../'
 output_directory = './'
 
 # reading time and z
-with xr.open_dataset(directory + 'history.pe000000.nc') as ds:
+with xr.open_dataset(directory + 'history.pe000000.nc', decode_times=False) as ds:
     z = ds['z']
     selected_data = ds.isel(time=indices)
     time = selected_data['time']
+    raw_time_seconds = time_coordinate_to_seconds(ds['time'])
+    selected_time_seconds = time_coordinate_to_seconds(time)
+    if expected_end_time is not None and raw_time_seconds[-1] < expected_end_time - 1.0e-6:
+        print("WARNING: The history output is incomplete.")
+        print(f"  Expected end time: {expected_end_time:g} seconds.")
+        print(f"  Last available history time: {raw_time_seconds[-1]:g} seconds.")
+        print(f"  Last selected diagnostic time: {selected_time_seconds[-1]:g} seconds.")
 
 def process_file(file_path):
     with xr.open_dataset(file_path) as ds:

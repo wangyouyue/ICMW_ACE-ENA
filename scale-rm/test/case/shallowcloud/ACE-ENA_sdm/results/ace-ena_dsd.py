@@ -53,20 +53,38 @@ radius_bins = np.logspace(np.log10(1e-6), np.log10(20e-6), num=20)
 start_tm = 27000  # 8 hours minus 30 minutes
 output_interval1 = 30  # Output interval in seconds
 end_tm = 28800  # 8-hour simulation end time
-T_MAX = int((end_tm - start_tm)/output_interval1) + 1  # 61 output times
 
 directory = '../'
 output_directory = './'
 
-def process_and_output_cloud_spectra(pnx, pny, current_time):
-    mpi = pnx * PRC_NUM_X + pny
-    time_str = strftime("%H%M%S", gmtime(current_time))
-    input_file = directory  + 'SD_all_NetCDF_00000101-'+time_str+'.000.pe'+str(mpi).zfill(6)
-    ds = xr.open_dataset(input_file)
+def time_coordinate_to_seconds(time_coord):
+    values = np.asarray(time_coord.values)
+    if np.issubdtype(values.dtype, np.timedelta64):
+        return values / np.timedelta64(1, 's')
+    if np.issubdtype(values.dtype, np.datetime64):
+        return (values - values[0]) / np.timedelta64(1, 's')
+    return values.astype(float)
 
-    sd_z_temp = ds['sd_z'].values
-    sd_r_temp = ds['sd_r'].values
-    sd_n_temp = ds['sd_n'].values
+def missing_expected_times(selected_seconds):
+    expected_seconds = np.arange(start_tm, end_tm + output_interval1 * 0.5, output_interval1)
+    tolerance = max(1.0e-6, output_interval1 * 0.01)
+    return np.array([
+        expected_time
+        for expected_time in expected_seconds
+        if not np.any(np.isclose(selected_seconds, expected_time, atol=tolerance, rtol=0.0))
+    ])
+
+def dsd_input_file(pnx, pny, current_time):
+    mpi = pny * PRC_NUM_X + pnx
+    time_str = strftime("%H%M%S", gmtime(int(round(current_time))))
+    return directory + 'SD_all_NetCDF_00000101-' + time_str + '.000.pe' + str(mpi).zfill(6)
+
+def process_and_output_cloud_spectra(pnx, pny, current_time, time_index):
+    input_file = dsd_input_file(pnx, pny, current_time)
+    with xr.open_dataset(input_file, decode_times=False) as ds:
+        sd_z_temp = ds['sd_z'].values
+        sd_r_temp = ds['sd_r'].values
+        sd_n_temp = ds['sd_n'].values
 
     mask = sd_z_temp > 0
     sd_z = sd_z_temp[mask]
@@ -99,25 +117,35 @@ def process_and_output_cloud_spectra(pnx, pny, current_time):
 
         z_st_index = z_st_index + z_count
 
-    # Convert simulation time to the output time index.
-    time_index = int((current_time - start_tm)/output_interval1)
     return spectra, pnx, pny, time_index
 
+def build_available_dsd_tasks(time_seconds):
+    tasks = []
+    skipped_times = []
+    selected_window_times = []
+
+    for time_index, current_time in enumerate(time_seconds):
+        if current_time < start_tm - 1.0e-6 or current_time > end_tm + 1.0e-6:
+            continue
+
+        selected_window_times.append(current_time)
+        missing_files = 0
+        for pnx in range(PRC_NUM_X):
+            for pny in range(PRC_NUM_Y):
+                if not os.path.exists(dsd_input_file(pnx, pny, current_time)):
+                    missing_files += 1
+
+        if missing_files > 0:
+            skipped_times.append((current_time, missing_files))
+            continue
+
+        for pnx in range(PRC_NUM_X):
+            for pny in range(PRC_NUM_Y):
+                tasks.append((pnx, pny, current_time, time_index))
+
+    return tasks, skipped_times, missing_expected_times(np.array(selected_window_times, dtype=float))
+
 def main():
-    DSD = np.zeros((T_MAX, PRC_NUM_Y, PRC_NUM_X, len(z_centers), len(radius_bins) - 1))
-
-    with ProcessPoolExecutor(max_workers=num_cores) as executor:
-        futures = [executor.submit(process_and_output_cloud_spectra, pnx, pny, current_time)
-                   for current_time in range(start_tm, end_tm + output_interval1, output_interval1)
-                   for pnx in range(PRC_NUM_X)
-                   for pny in range(PRC_NUM_Y)]
-        
-        for future in concurrent.futures.as_completed(futures):
-            spectra, pnx, pny, time_index = future.result()
-            DSD[time_index, pny, pnx, :, :] = spectra
-
-    # --- New implementation using append mode ('a') with corrected encoding ---
-
     # Define output file path
     output_filename = 'icmw24_aceena_3d_SCALE-SDM_SDM_NUIST_27000_Yin.nc'
     output_filepath = os.path.join(output_directory, output_filename)
@@ -131,6 +159,7 @@ def main():
                 return
             # Use existing time and z coordinates from the file
             time = existing_ds['time'].values
+            time_seconds = time_coordinate_to_seconds(existing_ds['time'])
             z = existing_ds['z'].values
     except FileNotFoundError:
         print(f"Error: The file {output_filepath} does not exist. Please run ace-ena_3D_fields.py first.")
@@ -138,6 +167,30 @@ def main():
     except Exception as e:
         print(f"An error occurred while reading the existing NetCDF file: {e}")
         return
+
+    tasks, skipped_times, missing_times = build_available_dsd_tasks(time_seconds)
+    if missing_times.size > 0:
+        print("WARNING: The requested 27000-28800 s DSD window is incomplete.")
+        print(f"  Missing {missing_times.size} expected time level(s) from the 3-D output time axis.")
+        window_times = time_seconds[(time_seconds >= start_tm) & (time_seconds <= end_tm)]
+        if window_times.size > 0:
+            print(f"  Last 3-D output time in the requested window is {window_times[-1]:g} seconds.")
+        else:
+            print("  No 3-D output time is available in the requested window.")
+    for current_time, missing_files in skipped_times:
+        print(f"WARNING: Skipping DSD at {current_time:g} seconds because {missing_files} process file(s) are missing.")
+    if not tasks:
+        print("Error: No complete DSD time levels are available for appending.")
+        return
+
+    DSD = np.full((len(time), PRC_NUM_Y, PRC_NUM_X, len(z), len(radius_bins) - 1), np.nan)
+
+    with ProcessPoolExecutor(max_workers=num_cores) as executor:
+        futures = [executor.submit(process_and_output_cloud_spectra, *task) for task in tasks]
+
+        for future in concurrent.futures.as_completed(futures):
+            spectra, pnx, pny, time_index = future.result()
+            DSD[time_index, pny, pnx, :, :] = spectra
 
     # 2. Define new coordinates specific to the DSD variable
     y_proc = np.arange(JMAX*DY/2, JMAX*DY/2 + JMAX*DY * PRC_NUM_Y, JMAX*DY)

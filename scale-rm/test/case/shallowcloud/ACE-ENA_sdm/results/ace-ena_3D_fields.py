@@ -49,114 +49,84 @@ x = np.arange(DX/2, IMAX*PRC_NUM_X*DX-DX/2+1e-6, DX)
 y = np.arange(DY/2, JMAX*PRC_NUM_Y*DY-DY/2+1e-6, DY)
 z = np.arange(DZ/2, KMAX*DZ-DZ/2+1e-6, DZ)
 
-# Remove the old conflicting time configuration (lines 58-62)
-# start_tm = 21600 # in sec
-# output_interval1 = 30 # in sec
-# output_interval2 = 1800 # in sec
-# start_index = start_tm // output_interval2
-# indices = slice(start_index, None, int(output_interval2/output_interval1))
-
 directory = '../'
 output_directory = './'
 
-# Clean time configuration with debug output
-total_time = 28800  # 8 hours total time in seconds
+def time_coordinate_to_seconds(time_coord):
+    values = np.asarray(time_coord.values)
+    if np.issubdtype(values.dtype, np.timedelta64):
+        return values / np.timedelta64(1, 's')
+    if np.issubdtype(values.dtype, np.datetime64):
+        return (values - values[0]) / np.timedelta64(1, 's')
+    return values.astype(float)
+
+def missing_expected_times(selected_seconds, expected_seconds, dt_seconds):
+    tolerance = max(1.0e-6, abs(dt_seconds) * 0.01)
+    return np.array([
+        expected_time
+        for expected_time in expected_seconds
+        if not np.any(np.isclose(selected_seconds, expected_time, atol=tolerance, rtol=0.0))
+    ])
+
+target_end_time = 28800  # 8 hours total time in seconds
 last_30_min = 1800  # last 30 minutes in seconds
 output_interval = 30  # output every 30 seconds
-start_time = total_time - last_30_min  # start time: 27000 seconds
+start_time = target_end_time - last_30_min  # start time: 27000 seconds
 
 print(f"Time configuration:")
-print(f"  Total time: {total_time} seconds ({total_time/3600:.1f} hours)")
+print(f"  Target end time: {target_end_time} seconds ({target_end_time/3600:.1f} hours)")
 print(f"  Last 30 minutes: {last_30_min} seconds")
 print(f"  Start time: {start_time} seconds ({start_time/3600:.1f} hours)")
 print(f"  Output interval: {output_interval} seconds")
 
-# Read and analyze original data time information
-with xr.open_dataset(directory + 'history.pe000000.nc') as ds:
+# Read the available time coordinate from the reference history file.
+with xr.open_dataset(directory + 'history.pe000000.nc', decode_times=False) as ds:
     time_coord = ds['time']
     total_time_steps = len(time_coord)
-    
-    # Use xarray's time handling
+    time_seconds_all = time_coordinate_to_seconds(time_coord)
+
     if len(time_coord) > 1:
-        dt_seconds = float((time_coord[1] - time_coord[0]).values / np.timedelta64(1, 's'))
+        dt_seconds = float(np.nanmedian(np.diff(time_seconds_all)))
     else:
-        dt_seconds = 30.0
-    
-    # Convert to seconds for display
-    first_time = float(time_coord[0].values / np.timedelta64(1, 's'))
-    last_time = float(time_coord[-1].values / np.timedelta64(1, 's'))
-    duration = last_time - first_time
-    
-    # print(f"\nOriginal data analysis:")
-    # print(f"  Total time steps: {total_time_steps}")
-    # print(f"  Time step interval (dt): {dt_seconds} seconds")
-    # print(f"  First time value: {first_time} seconds ({first_time/3600:.1f} hours)")
-    # print(f"  Last time value: {last_time} seconds ({last_time/3600:.1f} hours)")
-    # print(f"  Data duration: {duration} seconds ({duration/3600:.1f} hours)")
+        dt_seconds = float(output_interval)
 
-# Update the dt variable for later use
-dt = dt_seconds
-
-# Calculate correct indices
-start_index = int(start_time / dt)  # 27000/30 = 900
-step_interval = 1  # take every step since original data is already 30-second interval
-
-# print(f"\nIndex calculations:")
-# print(f"  Start index: {start_index}")
-# print(f"  Step interval: {step_interval}")
-# print(f"  Expected end index: {total_time_steps - 1}")
-# print(f"  Expected number of output time steps: {total_time_steps - start_index}")
-
-# Verify indices are within bounds
-if start_index >= total_time_steps:
-    print(f"ERROR: Start index {start_index} exceeds total time steps {total_time_steps}")
+first_time = float(time_seconds_all[0])
+last_time = float(time_seconds_all[-1])
+duration = last_time - first_time
+available_mask = (time_seconds_all >= start_time - 1.0e-6) & (time_seconds_all <= target_end_time + 1.0e-6)
+indices = np.flatnonzero(available_mask)
+if indices.size == 0:
+    print(f"ERROR: No time values found in the requested window {start_time:g}-{target_end_time:g} seconds.")
+    print(f"Available history range is {first_time:g}-{last_time:g} seconds.")
     exit(1)
 
-indices = slice(start_index, None, step_interval)  # from index 900 to end
+time = time_seconds_all[indices].astype(float)
+expected_times = np.arange(start_time, target_end_time + output_interval * 0.5, output_interval)
+missing_times = missing_expected_times(time, expected_times, dt_seconds)
+time_range_seconds = float(time[-1] - time[0])
+time_attrs = {'units': 'seconds since simulation start', 'long_name': 'time'}
+x_attrs = {'units': 'm', 'long_name': 'x coordinate'}
+y_attrs = {'units': 'm', 'long_name': 'y coordinate'}
+z_attrs = {'units': 'm', 'long_name': 'z coordinate'}
 
-# Read time coordinate with verification
-# Time coordinate extraction with proper datetime64 handling
-with xr.open_dataset(directory + 'history.pe000000.nc') as ds:
-    time_raw = ds['time'].isel(time=indices)
-    
-    # Convert time to seconds since start for better readability
-    # Keep the original datetime64 format but ensure proper units
-    time = time_raw.copy()
-    
-    # For debug output, convert to seconds
-    first_time_seconds = float(time_raw.values[0] / np.timedelta64(1, 's'))
-    last_time_seconds = float(time_raw.values[-1] / np.timedelta64(1, 's'))
-    time_range_seconds = last_time_seconds - first_time_seconds
-    
-    print(f"\nTime coordinate extraction:")
-    print(f"  Selected time steps: {len(time)}")
-    print(f"  First selected time: {first_time_seconds} seconds ({first_time_seconds/3600:.1f} hours)")
-    print(f"  Last selected time: {last_time_seconds} seconds ({last_time_seconds/3600:.1f} hours)")
-    print(f"  Time range: {time_range_seconds} seconds ({time_range_seconds/60:.1f} minutes)")
-    
-    # Alternative: Create a simple time coordinate in seconds
-    # This ensures NetCDF output has readable time values
-    time_data = np.arange(first_time_seconds, last_time_seconds + 30, 30)
-    time_attrs = {'units': 'seconds since simulation start', 'long_name': 'time'}
-    x_attrs = {'units': 'm', 'long_name': 'x coordinate'}
-    y_attrs = {'units': 'm', 'long_name': 'y coordinate'}
-    z_attrs = {'units': 'm', 'long_name': 'z coordinate'}
-    
-    time_seconds = xr.DataArray(
-    time_data,
-    dims=['time'],
-    attrs=time_attrs
-    )
-    
-    time = time_data
-    
-    # Verify time values are not empty or NaN
-    if len(time) == 0:
-        print("ERROR: No time values selected!")
-        exit(1)
-    if np.any(np.isnan(time)):
-        print("ERROR: Time values contain NaN!")
-        exit(1)
+print(f"\nOriginal data analysis:")
+print(f"  Total time steps: {total_time_steps}")
+print(f"  Time step interval (dt): {dt_seconds:g} seconds")
+print(f"  Available range: {first_time:g}-{last_time:g} seconds ({duration/3600:.2f} hours)")
+print(f"\nTime coordinate extraction:")
+print(f"  Selected time steps: {len(time)}")
+print(f"  First selected time: {time[0]:g} seconds ({time[0]/3600:.2f} hours)")
+print(f"  Last selected time: {time[-1]:g} seconds ({time[-1]/3600:.2f} hours)")
+print(f"  Time range: {time_range_seconds:g} seconds ({time_range_seconds/60:.1f} minutes)")
+if missing_times.size > 0:
+    print("WARNING: The requested 27000-28800 s window is incomplete.")
+    print(f"  Missing {missing_times.size} expected time level(s).")
+    print(f"  Last available selected time is {time[-1]:g} seconds.")
+    print("  The output file will contain only the available time levels.")
+
+if np.any(np.isnan(time)):
+    print("ERROR: Time values contain NaN!")
+    exit(1)
 
 def process_file(process_rank):
     file = f'{directory}history.pe{str(process_rank).zfill(6)}.nc'
@@ -170,8 +140,8 @@ def process_file(process_rank):
         file_time_steps = len(ds['time'])
         print(f"  File time steps: {file_time_steps}")
         
-        if start_index >= file_time_steps:
-            print(f"  ERROR: Start index {start_index} exceeds file time steps {file_time_steps}")
+        if indices[-1] >= file_time_steps:
+            print(f"  ERROR: Required time index {indices[-1]} exceeds file time steps {file_time_steps}")
             return None
         
         # Extract data with time slicing and convert to numpy arrays
